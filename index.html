@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physique Transformation OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide-react/0.263.1/lucide-react.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .accent-gradient { background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); }
+        .beast-mode { text-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
+        .tab-active { border-bottom: 2px solid #3b82f6; color: #3b82f6; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="min-h-screen pb-24">
+    <div id="app"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuration & Initialization ---
+        const apiKey = ""; // Runtime provided
+        const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
+        const appId = window.__app_id || 'physique-os-default';
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- State Management ---
+        let user = null;
+        let activeTab = 'dashboard';
+        let userData = {
+            habits: {},
+            mealPlan: [],
+            shoppingList: [],
+            streak: 0,
+            lastCompleted: null
+        };
+        let loading = true;
+        let motivationText = "Commit to the 2-Day Rule. One miss is a rest; two is a habit.";
+
+        // --- Constants from Document ---
+        const SCHEDULE = {
+            Monday: { title: 'Lower Body A', focus: 'Quad Bias', med: 'Goblet Squats + Core' },
+            Tuesday: { title: 'Upper Body A', focus: 'Horizontal Push/Pull', med: 'Push-ups + DB Rows' },
+            Wednesday: { title: 'Zone 2 Cardio', focus: 'Mitochondrial Health', med: '20min Walk' },
+            Thursday: { title: 'Lower Body B', focus: 'Posterior Chain', med: 'RDLs + Core' },
+            Friday: { title: 'Upper Body B', focus: 'Hypertrophy Focus', med: 'Incline Press + Curls' },
+            Saturday: { title: 'VO2 Max / Family', focus: '4x4 Protocol', med: 'Family Activity' },
+            Sunday: { title: 'Rest / Meal Prep', focus: 'Recovery', med: 'Rest' }
+        };
+
+        const RECIPES = {
+            'Overnight Oats': {
+                ingredients: ['1/2 cup Rolled Oats', '1 scoop Whey Protein', '1 tbsp Chia Seeds', '3/4 cup Almond Milk', '1/2 cup Frozen Berries'],
+                instructions: 'Mix in jar, refrigerate overnight. 0 prep morning of.'
+            },
+            'Turkey Chili': {
+                ingredients: ['2lbs Lean Ground Turkey', '2 cans Kidney Beans', '1 can Tomatoes', '1 Onion', '2 Bell Peppers', '1 Zucchini'],
+                instructions: 'Brown turkey, dump everything in slow cooker. Simmer 30 mins.'
+            },
+            'Salsa Chicken': {
+                ingredients: ['3lbs Chicken Thighs', '1 jar Salsa', '1 packet Taco Seasoning'],
+                instructions: 'Slow cook 6-8 hours on low. Shred and serve.'
+            }
+        };
+
+        // --- Core Functions ---
+
+        async function initAuth() {
+            try {
+                if (window.__initial_auth_token) {
+                    await signInWithCustomToken(auth, window.__initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth error:", error);
+            }
+        }
+
+        function setupListeners(u) {
+            const userDoc = doc(db, 'artifacts', appId, 'users', u.uid, 'profile', 'data');
+            onSnapshot(userDoc, (docSnap) => {
+                if (docSnap.exists()) {
+                    userData = { ...userData, ...docSnap.data() };
+                } else {
+                    saveUserData(); // Initialize
+                }
+                loading = false;
+                render();
+            }, (error) => console.error("Firestore listen error:", error));
+        }
+
+        async function saveUserData() {
+            if (!user) return;
+            const userDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'data');
+            await setDoc(userDoc, userData, { merge: true });
+        }
+
+        async function toggleHabit(dayKey) {
+            const today = new Date().toISOString().split('T')[0];
+            const habitKey = `${today}_${dayKey}`;
+            userData.habits[habitKey] = !userData.habits[habitKey];
+            
+            // Calculate streak (Simple logic for the 2-Day Rule)
+            updateStreak();
+            await saveUserData();
+        }
+
+        function updateStreak() {
+            // Logic for 2-day rule calculation could go here
+            // For now, simple count of completions
+        }
+
+        async function generateMotivation() {
+            const prompt = `Act as a personal performance coach for a 30-year-old 6'3" dad with an "all-or-nothing" personality. 
+            Give a 2-sentence piece of aggressive but encouraging motivation based on the goal of becoming a "beast" and sticking to the 2-day rule. 
+            Use biomechanical references if possible.`;
+            
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const result = await response.json();
+                motivationText = result.candidates[0].content.parts[0].text;
+                render();
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function generateRecipe(type) {
+            const prompt = `Generate a high-protein "Modular Bulk Prep" recipe for a ${type} that follows the "Physique Transformation Plan". 
+            High protein (40g+), easy cleanup, family-friendly components. Format with Title, Ingredients, and Instructions.`;
+            
+            // Similar fetch logic to motivation...
+            motivationText = "Generating recipe...";
+            render();
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const result = await response.json();
+                const recipeText = result.candidates[0].content.parts[0].text;
+                // Add to meal plan
+                userData.mealPlan.push({ id: Date.now(), text: recipeText, type });
+                await saveUserData();
+            } catch (err) { console.error(err); }
+        }
+
+        // --- UI Components ---
+
+        function render() {
+            const appEl = document.getElementById('app');
+            if (loading) {
+                appEl.innerHTML = `<div class="flex items-center justify-center h-screen"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div></div>`;
+                return;
+            }
+
+            const todayName = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(new Date());
+            const todayPlan = SCHEDULE[todayName];
+
+            appEl.innerHTML = `
+                <!-- Header -->
+                <header class="p-6 pb-2 border-b border-slate-800 sticky top-0 bg-slate-900/80 backdrop-blur-md z-10">
+                    <div class="flex justify-between items-center mb-4">
+                        <div>
+                            <h1 class="text-2xl font-extrabold beast-mode tracking-tighter">PHYSIQUE <span class="text-blue-500">OS</span></h1>
+                            <p class="text-xs text-slate-400 font-semibold uppercase tracking-widest">Year 1: Foundation & Recomp</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="block text-xs text-slate-500 font-bold uppercase">2-Day Streak</span>
+                            <span class="text-xl font-bold text-orange-500">🔥 7 Days</span>
+                        </div>
+                    </div>
+                </header>
+
+                <main class="p-4 space-y-6">
+                    ${renderTabContent(activeTab, todayPlan, todayName)}
+                </main>
+
+                <!-- Navigation Bottom Bar -->
+                <nav class="fixed bottom-0 left-0 right-0 glass border-t border-white/5 p-2 px-6 flex justify-between items-center z-20">
+                    ${renderNavItem('dashboard', 'layout-dashboard', 'Home')}
+                    ${renderNavItem('workouts', 'dumbbell', 'Lift')}
+                    ${renderNavItem('meals', 'utensils', 'Eat')}
+                    ${renderNavItem('list', 'shopping-cart', 'Shop')}
+                </nav>
+            `;
+
+            attachEvents();
+        }
+
+        function renderNavItem(id, icon, label) {
+            const isActive = activeTab === id;
+            return `
+                <button onclick="window.switchTab('${id}')" class="flex flex-col items-center p-2 transition-all ${isActive ? 'text-blue-500 scale-110' : 'text-slate-500'}">
+                    <i data-lucide="${icon}" class="w-6 h-6 mb-1"></i>
+                    <span class="text-[10px] font-bold uppercase">${label}</span>
+                </button>
+            `;
+        }
+
+        function renderTabContent(tab, todayPlan, todayName) {
+            switch (tab) {
+                case 'dashboard':
+                    return `
+                        <!-- Today's Focus -->
+                        <div class="glass rounded-3xl p-6 relative overflow-hidden accent-gradient">
+                            <div class="relative z-10">
+                                <h2 class="text-sm font-bold uppercase opacity-80 mb-1">Today's Focus: ${todayName}</h2>
+                                <h3 class="text-3xl font-black mb-4">${todayPlan.title}</h3>
+                                <div class="flex items-center space-x-2 text-sm font-semibold bg-black/20 w-fit px-3 py-1 rounded-full mb-4">
+                                    <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                                    <span>${todayPlan.focus}</span>
+                                </div>
+                                <button onclick="window.toggleHabit('${todayName}')" class="w-full bg-white text-blue-900 font-bold py-3 rounded-2xl shadow-xl active:scale-95 transition-transform">
+                                    COMPLETE SESSION
+                                </button>
+                            </div>
+                            <div class="absolute -right-8 -bottom-8 opacity-20">
+                                <i data-lucide="shield-check" class="w-48 h-48"></i>
+                            </div>
+                        </div>
+
+                        <!-- Motivation -->
+                        <div class="glass rounded-2xl p-6 border-l-4 border-orange-500">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-bold text-orange-500 uppercase">Coach Beast AI</span>
+                                <button onclick="window.refreshMotivation()"><i data-lucide="refresh-cw" class="w-4 h-4 text-slate-500"></i></button>
+                            </div>
+                            <p class="text-lg italic font-medium leading-tight">"${motivationText}"</p>
+                        </div>
+
+                        <!-- The 2-Day Rule Habit Tracker -->
+                        <div class="space-y-3">
+                            <h4 class="text-xs font-bold text-slate-500 uppercase px-1">Habit Circuit Breaker</h4>
+                            <div class="grid grid-cols-7 gap-2">
+                                ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => `
+                                    <div class="flex flex-col items-center">
+                                        <div class="w-10 h-10 rounded-xl glass border-white/5 flex items-center justify-center font-bold text-xs">
+                                            ${day[0]}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- MED Mode -->
+                        <div class="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between">
+                            <div>
+                                <h4 class="font-bold text-red-400">Low Energy? MED Mode</h4>
+                                <p class="text-xs text-slate-400">${todayPlan.med}</p>
+                            </div>
+                            <i data-lucide="zap" class="text-red-500"></i>
+                        </div>
+                    `;
+                case 'workouts':
+                    return `
+                        <div class="space-y-6">
+                            <div class="flex justify-between items-end">
+                                <h2 class="text-3xl font-black">WORKOUTS</h2>
+                                <a href="https://hevy.com" target="_blank" class="text-blue-500 font-bold text-sm underline">LOG IN HEVY</a>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                ${Object.entries(SCHEDULE).map(([day, plan]) => `
+                                    <div class="glass p-5 rounded-2xl border-white/5">
+                                        <div class="flex justify-between mb-2">
+                                            <span class="text-xs font-bold text-blue-500 uppercase">${day}</span>
+                                            <span class="text-xs font-bold text-slate-500">${plan.focus}</span>
+                                        </div>
+                                        <h3 class="text-xl font-bold mb-3">${plan.title}</h3>
+                                        <div class="grid grid-cols-2 gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                            <div class="bg-slate-800/50 p-2 rounded-lg">3 Sets x 8-12</div>
+                                            <div class="bg-slate-800/50 p-2 rounded-lg">90s Rest</div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                case 'meals':
+                    return `
+                        <div class="space-y-6">
+                            <h2 class="text-3xl font-black uppercase">Fueling</h2>
+                            
+                            <!-- Static Meal Preps -->
+                            <div class="space-y-3">
+                                <h3 class="text-xs font-black text-slate-500 uppercase">Automation Bases</h3>
+                                <div class="glass p-4 rounded-2xl flex items-center gap-4">
+                                    <div class="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-500">
+                                        <i data-lucide="clock" class="w-6 h-6"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Overnight Oats</h4>
+                                        <p class="text-xs text-slate-400">Prep 5 jars Sunday. 35g Protein.</p>
+                                    </div>
+                                </div>
+                                <div class="glass p-4 rounded-2xl flex items-center gap-4">
+                                    <div class="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center text-orange-500">
+                                        <i data-lucide="box" class="w-6 h-6"></i>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-bold">Adult Lunchable</h4>
+                                        <p class="text-xs text-slate-400">Chicken + Steamed Veg + Avocado.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Modular Dinners -->
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center">
+                                    <h3 class="text-xs font-black text-slate-500 uppercase">Dinner Archive</h3>
+                                    <button onclick="window.generateRecipe('Modular Dinner')" class="text-xs font-bold text-blue-500 underline">+ GENERATE NEW</button>
+                                </div>
+                                ${Object.entries(RECIPES).map(([name, data]) => `
+                                    <details class="glass p-4 rounded-2xl border-white/5 group">
+                                        <summary class="list-none cursor-pointer flex justify-between items-center font-bold">
+                                            <span>${name}</span>
+                                            <i data-lucide="chevron-down" class="w-4 h-4 group-open:rotate-180 transition-transform"></i>
+                                        </summary>
+                                        <div class="mt-3 text-sm space-y-2">
+                                            <p class="text-xs text-slate-400 font-bold uppercase tracking-tight">Ingredients</p>
+                                            <ul class="grid grid-cols-2 gap-1 text-xs">
+                                                ${data.ingredients.map(i => `<li>• ${i}</li>`).join('')}
+                                            </ul>
+                                            <p class="text-xs text-slate-400 font-bold uppercase tracking-tight mt-2">Method</p>
+                                            <p class="text-xs text-slate-300 italic">${data.instructions}</p>
+                                        </div>
+                                    </details>
+                                `).join('')}
+                                ${userData.mealPlan.map(m => `
+                                    <div class="glass p-4 rounded-2xl border-white/5 opacity-80">
+                                        <h4 class="font-bold mb-2">AI Generated Recipe</h4>
+                                        <p class="text-xs whitespace-pre-wrap">${m.text}</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                case 'list':
+                    return `
+                        <div class="space-y-6">
+                            <h2 class="text-3xl font-black">GROCERIES</h2>
+                            
+                            <div class="space-y-6">
+                                <div>
+                                    <h3 class="text-xs font-black text-slate-500 uppercase mb-3">Essentials (Perpetual)</h3>
+                                    <div class="space-y-2">
+                                        ${['Oats', 'Whey Protein', 'Ground Turkey', 'Chicken Thighs', 'Frozen Berries', 'Almond Milk', 'Veggies'].map(item => `
+                                            <div class="flex items-center gap-3 glass p-3 rounded-xl">
+                                                <input type="checkbox" class="w-5 h-5 rounded-lg border-white/10 bg-white/5">
+                                                <span class="font-semibold">${item}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h3 class="text-xs font-black text-orange-500 uppercase mb-3 underline">Supplement Stack</h3>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        ${['Creatine', 'Vit D3+K2', 'Omega-3', 'Magnesium Glyc.', 'Ashwagandha'].map(supp => `
+                                            <div class="glass p-3 rounded-xl text-center">
+                                                <p class="text-xs font-bold uppercase">${supp}</p>
+                                                <span class="text-[9px] text-slate-500">Daily Order</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+            }
+        }
+
+        function attachEvents() {
+            lucide.createIcons();
+        }
+
+        // --- Global Actions ---
+        window.switchTab = (tab) => {
+            activeTab = tab;
+            render();
+        };
+
+        window.refreshMotivation = async () => {
+            await generateMotivation();
+        };
+
+        window.toggleHabit = toggleHabit;
+        window.generateRecipe = generateRecipe;
+
+        // --- Bootstrap ---
+        onAuthStateChanged(auth, (u) => {
+            if (u) {
+                user = u;
+                setupListeners(u);
+            } else {
+                initAuth();
+            }
+        });
+
+    </script>
+</body>
+</html>
