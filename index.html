@@ -12,18 +12,17 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Defensive environment check for GitHub/External Hosting
+        // Defensive check for GitHub/External Hosting environment
         let firebaseConfig = null;
         try {
-            if (typeof __firebase_config !== 'undefined') {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 firebaseConfig = JSON.parse(__firebase_config);
             } else {
-                // Check if user saved a custom config in localStorage
                 const savedConfig = localStorage.getItem('beast_custom_firebase_config');
                 if (savedConfig) firebaseConfig = JSON.parse(savedConfig);
             }
         } catch (e) {
-            console.warn("Firebase config not found or invalid.");
+            console.warn("Firebase configuration not detected. App will run in local mode.");
         }
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'beast-hub-v1';
@@ -48,15 +47,14 @@
             onAuthStateChanged(auth, (user) => {
                 if (user) {
                     window.currentUser = user;
+                    window.isLocalMode = false;
                     window.dispatchEvent(new CustomEvent('auth-ready'));
                 }
             });
 
             initAuth();
         } else {
-            // No Firebase detected - Trigger local-only mode
             window.isLocalMode = true;
-            console.log("Running in Local Mode (Storage in Browser Cache)");
             setTimeout(() => {
                 window.dispatchEvent(new CustomEvent('auth-ready'));
             }, 100);
@@ -77,24 +75,25 @@
         input[type="number"]::-webkit-inner-spin-button { display: none; }
         .recipe-container h3 { color: #60a5fa; font-weight: 800; margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.9rem; }
         .recipe-container p { margin-bottom: 0.75rem; font-size: 0.95rem; }
+        .planner-day:hover { background: #334155; }
         .beast-glow { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
     </style>
 </head>
-<body class="min-h-screen pb-32 text-slate-100">
+<body class="min-h-screen pb-32 text-slate-100 text-left">
 
     <header class="sticky top-0 z-50 glass border-b border-slate-700 px-4 py-4 mb-6">
         <div class="max-w-4xl mx-auto flex justify-between items-center">
             <div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 text-left">
                     <p id="day-of-week-banner" class="text-blue-400 font-black text-lg uppercase tracking-widest leading-none beast-font">BEAST HUB</p>
                     <span class="bg-blue-600/20 text-blue-400 text-[10px] font-black px-2 py-0.5 rounded border border-blue-500/30 uppercase">Year 1: Foundation</span>
                 </div>
-                <p id="current-date-display" class="text-xs text-slate-400 font-medium"></p>
+                <p id="current-date-display" class="text-xs text-slate-400 font-medium text-left"></p>
             </div>
             <div class="flex items-center gap-3">
                 <div id="sync-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden"></div>
                 <button onclick="toggleSettings()" class="p-2 hover:bg-slate-700 rounded-full transition">
-                    <i data-lucide="settings" class="w-5 h-5"></i>
+                    <i data-lucide="settings" class="w-5 h-5 text-slate-100"></i>
                 </button>
             </div>
         </div>
@@ -104,12 +103,12 @@
 
         <!-- Momentum Section -->
         <section id="habit-section" class="card p-6 shadow-xl relative overflow-hidden">
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center justify-between mb-4 text-left">
                 <h2 class="text-sm font-bold flex items-center gap-2 uppercase tracking-widest text-slate-400 beast-font">
                     <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i> Momentum
                 </h2>
                 <div class="flex items-center gap-2">
-                    <button onclick="runPerformanceAudit()" class="text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded-full font-bold hover:bg-blue-600/30 transition">Audit ✨</button>
+                    <button onclick="runPerformanceAudit()" class="text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded-full font-bold hover:bg-blue-600/30 transition text-slate-100">Audit ✨</button>
                     <span id="streak-counter" class="text-xs font-bold bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full">0 Day Streak</span>
                 </div>
             </div>
@@ -117,87 +116,87 @@
             <p id="rule-status" class="text-[10px] mt-3 text-center text-slate-500 italic uppercase tracking-wider">Protect the 2-Day Rule</p>
         </section>
 
-        <!-- Biometrics & Roadmap -->
-        <section class="card p-6 border-blue-500/30">
+        <!-- Metrics Overview -->
+        <section class="card p-6 border-blue-500/30 text-left">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400 beast-font">Beast Analytics</h2>
-                <button onclick="showTab('roadmap')" class="text-[10px] text-blue-400 font-black uppercase flex items-center gap-1">4-Year Plan <i data-lucide="map" class="w-3 h-3"></i></button>
+                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400 beast-font text-left">Body Composition</h2>
+                <button onclick="showTab('progress')" class="text-xs text-blue-400 font-bold hover:underline">Log Analytics</button>
             </div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
                 <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30">
-                    <p class="text-[10px] text-slate-500 uppercase font-black">Weight</p>
-                    <p class="text-xl font-bold" id="latest-weight">-- lbs</p>
+                    <p class="text-[10px] text-slate-500 uppercase font-black text-left">Weight</p>
+                    <p class="text-xl font-bold text-slate-100" id="latest-weight">-- lbs</p>
                 </div>
                 <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30">
-                    <p class="text-[10px] text-slate-500 uppercase font-black">Body Fat</p>
+                    <p class="text-[10px] text-slate-500 uppercase font-black text-left">Body Fat</p>
                     <p class="text-xl font-bold text-blue-400" id="latest-bf">-- %</p>
                 </div>
                 <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30 text-center">
                     <p class="text-[10px] text-slate-500 uppercase font-black">200g Protein</p>
-                    <p class="text-xl font-bold" id="protein-total">0g</p>
+                    <p class="text-xl font-bold text-slate-100" id="protein-total">0g</p>
                 </div>
-                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30">
-                    <p class="text-[10px] text-slate-500 uppercase font-black">Goal: 12%</p>
+                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30 text-left">
+                    <p class="text-[10px] text-slate-500 uppercase font-black text-left">Goal: 12%</p>
                     <div class="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
                         <div id="bf-progress-bar" class="bg-blue-500 h-full rounded-full transition-all duration-1000" style="width: 0%"></div>
                     </div>
                 </div>
             </div>
-            <div class="flex gap-2">
-                <button onclick="addProtein()" class="flex-1 bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700">+ 25g Protein</button>
-                <button onclick="showTab('progress')" class="flex-1 accent-gradient py-2 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg">Log Metrics</button>
+            <div class="flex gap-2 mt-4">
+                <button onclick="addProtein()" class="flex-1 bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-700 text-slate-100 tracking-widest">+ 25g Protein</button>
+                <button onclick="showTab('progress')" class="flex-1 accent-gradient py-2 rounded-lg text-[10px] font-black uppercase shadow-lg text-slate-100 tracking-widest">Update Metrics</button>
             </div>
         </section>
 
-        <!-- Daily View -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <section class="card p-6 flex flex-col">
-                <div class="flex justify-between items-start mb-4">
-                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font"><i data-lucide="dumbbell" class="text-blue-500"></i> Blueprint</h2>
+        <!-- Dashboard Split -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+            <section class="card p-6 flex flex-col text-left">
+                <div class="flex justify-between items-start mb-4 text-left">
+                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-left"><i data-lucide="dumbbell" class="text-blue-500"></i> Today's Blueprint</h2>
                     <span id="day-type-badge" class="text-[10px] bg-slate-700 px-2 py-1 rounded uppercase font-bold text-slate-300"></span>
                 </div>
-                <div id="today-tasks" class="space-y-2 mb-4 flex-grow"></div>
-                <button onclick="showTab('workouts')" class="w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-2">
-                    <i data-lucide="info" class="w-3 h-3"></i> View Tall Cues
+                <div id="today-tasks" class="space-y-3 mb-4 flex-grow text-left"></div>
+                <button onclick="showTab('workouts')" class="w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-2 text-slate-100">
+                    <i data-lucide="info" class="w-3 h-3"></i> View Tall Lifter Cues
                 </button>
             </section>
 
-            <section class="card p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font"><i data-lucide="pill" class="text-emerald-500"></i> Protocol</h2>
+            <section class="card p-6 text-left">
+                <div class="flex justify-between items-center mb-4 text-left">
+                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-left"><i data-lucide="pill" class="text-emerald-500"></i> Protocol</h2>
                     <button onclick="toggleSuppModal()" class="text-xs text-blue-400 font-bold hover:underline">+ Manage</button>
                 </div>
                 <div id="supp-list" class="space-y-2"></div>
             </section>
         </div>
 
-        <!-- Nutrition Library -->
-        <section class="card p-6">
-            <h2 class="text-lg font-bold flex items-center gap-2 beast-font mb-6"><i data-lucide="utensils" class="text-orange-500"></i> Nutrition Hub</h2>
+        <!-- Meals -->
+        <section class="card p-6 text-slate-100 text-left">
+            <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-left mb-6"><i data-lucide="utensils" class="text-orange-500"></i> Nutrition Hub</h2>
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="meal-grid"></div>
         </section>
 
-        <!-- Stats Trackers -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
             <section class="card p-6 flex justify-between items-center text-slate-100">
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 text-left">
                     <div class="p-3 bg-red-500/10 rounded-xl border border-red-500/20"><i data-lucide="glass-water" class="text-red-500"></i></div>
-                    <div><h3 class="font-bold text-sm beast-font">Weekly Alcohol</h3><p class="text-xs text-slate-500">Limit: 3</p></div>
+                    <div><h3 class="font-bold text-sm beast-font">Weekly Alcohol</h3><p class="text-xs text-slate-500">Cap: 3 Drinks</p></div>
                 </div>
                 <div class="flex items-center gap-4">
                     <p class="text-2xl font-black text-red-400" id="alcohol-count">0/3</p>
-                    <button onclick="addAlcohol()" class="bg-slate-700 p-2 rounded-lg hover:bg-slate-600 transition text-slate-100"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                    <button onclick="addAlcohol()" class="bg-slate-700 p-2 rounded-lg hover:bg-slate-600 transition text-slate-100"><i data-lucide="plus" class="w-4 h-4 text-slate-100"></i></button>
                 </div>
             </section>
 
             <section class="card p-6 flex justify-between items-center text-slate-100">
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 text-left">
                     <div class="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20"><i data-lucide="droplets" class="text-blue-500"></i></div>
                     <div><h3 class="font-bold text-sm beast-font">Hydration</h3><p class="text-xs text-slate-500">Target: 4L</p></div>
                 </div>
-                <div class="flex items-center gap-4">
+                <div class="flex items-center gap-4 text-left">
                     <p class="text-2xl font-black text-red-400 text-blue-400" id="water-count">0.0L</p>
-                    <button onclick="addWater()" class="bg-slate-700 p-2 rounded-lg hover:bg-slate-600 transition text-slate-100"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                    <button onclick="addWater()" class="bg-slate-700 p-2 rounded-lg hover:bg-slate-600 transition text-slate-100"><i data-lucide="plus" class="w-4 h-4 text-slate-100"></i></button>
                 </div>
             </section>
         </div>
@@ -205,86 +204,83 @@
     </main>
 
     <!-- Navigation -->
-    <div class="fixed bottom-6 left-4 right-4 h-20 glass rounded-3xl border border-slate-700 flex items-center justify-between px-6 shadow-2xl z-40">
-        <button onclick="getMotivation()" class="flex flex-col items-center gap-1 text-yellow-500 w-16">
-            <i data-lucide="zap" class="w-6 h-6"></i>
-            <span class="text-[9px] font-bold uppercase tracking-tight">Focus ✨</span>
+    <div class="fixed bottom-6 left-4 right-4 h-20 glass rounded-3xl border border-slate-700 flex items-center justify-between px-2 shadow-2xl z-40 text-slate-100">
+        <button onclick="getMotivation()" class="flex flex-col items-center gap-1 text-yellow-500 flex-1 min-w-0">
+            <i data-lucide="zap" class="w-5 h-5 text-yellow-500"></i>
+            <span class="text-[8px] font-bold uppercase tracking-tighter">Focus ✨</span>
         </button>
-        
-        <button onclick="showTab('shopping')" class="flex flex-col items-center gap-1 text-purple-400 w-16">
-            <i data-lucide="shopping-cart" class="w-5 h-5"></i>
-            <span class="text-[9px] font-bold uppercase tracking-tight">Shop</span>
+        <button onclick="showTab('shopping')" class="flex flex-col items-center gap-1 text-purple-400 flex-1 min-w-0">
+            <i data-lucide="shopping-cart" class="w-5 h-5 text-purple-400"></i>
+            <span class="text-[8px] font-bold uppercase tracking-tighter">Shop</span>
         </button>
-
-        <button onclick="generateDraftSelector()" class="accent-gradient h-14 px-6 rounded-2xl font-black text-[10px] shadow-lg active:scale-95 transition tracking-widest uppercase flex-1 max-w-[140px] mx-2 beast-glow">
-            Build Fuel ✨
+        <button onclick="generateDraftSelector()" class="accent-gradient h-14 px-4 rounded-2xl font-black text-[10px] shadow-lg active:scale-95 transition tracking-widest uppercase flex-1 max-w-[100px] mx-1 text-slate-100 beast-glow">
+            Build ✨
         </button>
-
-        <button onclick="showTab('progress')" class="flex flex-col items-center gap-1 text-blue-400 w-16">
-            <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
-            <span class="text-[9px] font-bold uppercase tracking-tight">Metrics</span>
+        <button onclick="showTab('planner')" class="flex flex-col items-center gap-1 text-emerald-400 flex-1 min-w-0">
+            <i data-lucide="calendar" class="w-5 h-5 text-emerald-400"></i>
+            <span class="text-[8px] font-bold uppercase tracking-tighter">Plan</span>
         </button>
-
-        <button onclick="showTab('med')" class="flex flex-col items-center gap-1 text-orange-400 w-16">
-            <i data-lucide="timer" class="w-6 h-6"></i>
-            <span class="text-[9px] font-bold uppercase tracking-tight">MED</span>
+        <button onclick="showTab('progress')" class="flex flex-col items-center gap-1 text-blue-400 flex-1 min-w-0">
+            <i data-lucide="bar-chart-2" class="w-5 h-5 text-blue-400"></i>
+            <span class="text-[8px] font-bold uppercase tracking-tighter">Metrics</span>
+        </button>
+        <button onclick="showTab('med')" class="flex flex-col items-center gap-1 text-orange-400 flex-1 min-w-0">
+            <i data-lucide="timer" class="w-5 h-5 text-orange-400"></i>
+            <span class="text-[8px] font-bold uppercase tracking-tighter">MED</span>
         </button>
     </div>
 
     <!-- Modals -->
     <div id="settings-modal" class="fixed inset-0 bg-black/80 hidden z-[60] flex items-center justify-center p-4">
-        <div class="card w-full max-w-sm p-6 text-slate-100">
+        <div class="card w-full max-w-sm p-6 text-slate-100 text-left">
             <h3 class="text-xl font-bold mb-4 text-blue-400 uppercase beast-font">System Config</h3>
             <label class="block text-sm text-slate-400 mb-2">Google AI API Key</label>
             <input type="password" id="api-key-input" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 mb-4 text-white" placeholder="AI Key for Recipes...">
-            
             <div class="mb-4">
-                <label class="block text-[10px] text-slate-500 uppercase font-black mb-1">Custom Firebase Config (JSON)</label>
+                <label class="block text-[10px] text-slate-500 uppercase font-black mb-1 text-left">Firebase Config (JSON)</label>
                 <textarea id="firebase-config-input" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-[10px] text-emerald-400 font-mono" placeholder='{"apiKey": "...", "authDomain": "..."}'></textarea>
-                <p class="text-[9px] text-slate-600 mt-1 italic">Only needed if self-hosting on GitHub to enable permanent cloud storage.</p>
+                <p class="text-[9px] text-slate-600 mt-1 italic text-left">Optional cloud storage setup for GitHub hosting.</p>
             </div>
-
             <div class="flex gap-3">
-                <button onclick="saveSettings()" class="flex-1 bg-blue-600 p-3 rounded-xl font-bold">Save</button>
-                <button onclick="toggleSettings()" class="flex-1 bg-slate-700 p-3 rounded-xl">Close</button>
+                <button onclick="saveSettings()" class="flex-1 bg-blue-600 p-3 rounded-xl font-bold uppercase text-xs tracking-widest text-slate-100">Save</button>
+                <button onclick="toggleSettings()" class="flex-1 bg-slate-700 p-3 rounded-xl uppercase text-xs tracking-widest text-slate-100">Close</button>
             </div>
-            <p id="mode-status" class="text-[10px] text-slate-500 mt-4 text-center">Checking Sync Mode...</p>
+            <p id="mode-status" class="text-[10px] text-slate-500 mt-4 text-center font-black uppercase"></p>
         </div>
     </div>
 
-    <div id="supp-modal" class="fixed inset-0 bg-black/80 hidden z-[60] flex items-center justify-center p-4">
-        <div class="card w-full max-w-sm p-6 text-slate-100">
-            <h3 class="text-xl font-bold mb-4 text-emerald-400 beast-font">Manage Protocol</h3>
-            <div class="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2" id="supp-manage-list"></div>
+    <div id="supp-modal" class="fixed inset-0 bg-black/80 hidden z-[60] flex items-center justify-center p-4 text-slate-100 text-left">
+        <div class="card w-full max-w-sm p-6">
+            <h3 class="text-xl font-bold mb-4 text-emerald-400 uppercase beast-font text-left">Manage Stack</h3>
+            <div class="space-y-2 mb-4 max-h-60 overflow-y-auto pr-2" id="supp-manage-list"></div>
             <div class="space-y-2 border-t border-slate-700 pt-4">
                 <input type="text" id="new-supp-name" placeholder="Name" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-                <input type="text" id="new-supp-time" placeholder="Time/Dose" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-                <button onclick="addSupp()" class="w-full bg-emerald-600 py-2 rounded-lg font-bold text-sm uppercase tracking-widest shadow-lg">+ Add To Protocol</button>
+                <input type="text" id="new-supp-time" placeholder="Dose/Time" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
+                <button onclick="addSupp()" class="w-full bg-emerald-600 py-2 rounded-lg font-bold text-sm shadow-lg tracking-widest text-slate-100">+ ADD TO STACK</button>
             </div>
-            <button onclick="toggleSuppModal()" class="w-full mt-4 bg-slate-700 py-2 rounded-lg text-sm">Close</button>
+            <button onclick="toggleSuppModal()" class="w-full mt-4 bg-slate-700 py-2 rounded-lg text-sm text-slate-100">Close</button>
         </div>
     </div>
 
-    <div id="content-modal" class="fixed inset-0 bg-black/95 hidden z-[70] overflow-y-auto p-4">
+    <div id="content-modal" class="fixed inset-0 bg-black/95 hidden z-[70] overflow-y-auto p-4 text-slate-100 text-left">
         <div class="max-w-2xl mx-auto py-10">
-            <div class="flex justify-between items-center mb-6 text-slate-100">
+            <div class="flex justify-between items-center mb-6 text-left">
                 <h2 id="modal-title" class="text-2xl font-bold text-blue-400 uppercase beast-font"></h2>
-                <button onclick="closeModal()" class="text-slate-400 p-2 hover:bg-slate-800 rounded-full transition"><i data-lucide="x" class="w-8 h-8"></i></button>
+                <button onclick="closeModal()" class="text-slate-400 p-2 hover:bg-slate-800 rounded-full transition text-left"><i data-lucide="x" class="w-8 h-8 text-slate-100"></i></button>
             </div>
-            <div id="modal-body" class="text-slate-300 leading-relaxed prose prose-invert max-w-none"></div>
+            <div id="modal-body" class="text-slate-300 leading-relaxed prose prose-invert max-w-none text-left"></div>
         </div>
     </div>
 
     <script>
-        // Global Constants
         const BEAST_SCHEDULE = [
-            { day: 'Sunday', type: 'Prep & Rest', tasks: ['Batch Prep 5x Oats', 'Cook 2lbs Turkey Chili', 'Clean Gym Gear'] },
+            { day: 'Sunday', type: 'Prep & Rest', tasks: ['Batch Prep 5x Oats', 'Cook 2lbs Turkey Chili', 'Weekly Plan Audit'] },
             { day: 'Monday', type: 'Lower A (Quads)', tasks: ['Hack Squat: 3x8-10', 'Walking Lunges: 3x12', 'Leg Extension: 3x15', 'Leg Raise: 3x15'] },
             { day: 'Tuesday', type: 'Upper A (Push)', tasks: ['Floor Press: 3x6-8', 'Chest Supported Row: 3x10', 'DB OH Press: 3x10', 'Face Pulls: 3x15'] },
-            { day: 'Wednesday', type: 'Zone 2 / Rest', tasks: ['45-60m Rucking (25lb)', 'Mobility Flow', 'High Protein Focus'] },
+            { day: 'Wednesday', type: 'Zone 2 / Recovery', tasks: ['45-60m Rucking (25lb)', 'Mobility Flow', 'High Protein Focus'] },
             { day: 'Thursday', type: 'Lower B (Hinge)', tasks: ['Trap Bar Deadlift: 3x6-8', 'Romanian Deadlift: 3x10', 'Lying Leg Curl: 3x15', 'Cable Crunch: 3x15'] },
-            { day: 'Friday', type: 'Upper B (Pull)', tasks: ['Incline DB Press: 3x10', 'Neutral Lat Pulldown: 3x10', 'Lateral Raise: 4x20', 'Arm Super-sets'] },
-            { day: 'Saturday', type: 'VO2 Max / Family', tasks: ['4x4 Interval Protocol', 'Active Family Outing', 'Weekly Meal Audit'] }
+            { day: 'Friday', type: 'Upper B (Pull)', tasks: ['Incline DB Press: 3x10', 'Neutral Lat Pulldown: 3x10', 'Lateral Raise: 4x20', 'Arm Iso Super-set'] },
+            { day: 'Saturday', type: 'VO2 Max / Activity', tasks: ['4x4 Interval Protocol', 'Active Family Outing', 'Meal Prep Start'] }
         ];
 
         const MEAL_LIBRARY = {
@@ -304,11 +300,6 @@
                 { id: 'd3', name: 'Sheet Pan Sausage & Veg', macros: '680 Cal | 55g P', blueprint: 'Chicken Sausage, Broccoli, Sweet Potato, Bell Peppers, Olive Oil.' }
             ]
         };
-        for(let i=4; i<=10; i++) {
-            MEAL_LIBRARY.breakfast.push({ id: 'b'+i, name: 'High Protein Breakfast Option #'+i, macros: '450 Cal | 40g P', blueprint: 'Macro-balanced meal with high protein focus.' });
-            MEAL_LIBRARY.lunch.push({ id: 'l'+i, name: 'Performance Lunch Option #'+i, macros: '550 Cal | 50g P', blueprint: 'Clean protein with complex carbs and veggies.' });
-            MEAL_LIBRARY.dinner.push({ id: 'd'+i, name: 'Modular Dinner Option #'+i, macros: '700 Cal | 60g P', blueprint: 'Modular family-style base with lean protein.' });
-        }
 
         const DEFAULT_SUPPS = [
             { name: 'Creatine Monohydrate', time: '5g: Morning/Post-Lift', checked: false },
@@ -318,75 +309,64 @@
             { name: 'Ashwagandha (KSM-66)', time: '300-600mg: Stress/Daily', checked: false }
         ];
 
-        const DEFAULT_SHOPPING = [
-            { cat: 'Supps', name: 'Creatine Monohydrate', checked: false },
-            { cat: 'Protein', name: 'Lean Turkey (2lbs)', checked: false },
-            { cat: 'Produce', name: 'Avocados & Berries', checked: false },
-            { cat: 'Pantry', name: 'Rolled Oats & Chia', checked: false }
-        ];
-
-        // Global State
         let appState = {
             habits: JSON.parse(localStorage.getItem('beast_local_habits')) || {},
             supps: JSON.parse(localStorage.getItem('beast_local_supps')) || [...DEFAULT_SUPPS],
-            shopping: JSON.parse(localStorage.getItem('beast_local_shop')) || [...DEFAULT_SHOPPING],
+            shopping: JSON.parse(localStorage.getItem('beast_local_shop')) || [],
             metrics: JSON.parse(localStorage.getItem('beast_local_metrics')) || [],
+            planner: JSON.parse(localStorage.getItem('beast_local_planner')) || {},
             drinks: parseInt(localStorage.getItem('beast_local_drinks')) || 0,
             water: parseFloat(localStorage.getItem('beast_local_water')) || 0,
             protein: parseInt(localStorage.getItem('beast_local_protein')) || 0,
             apiKey: localStorage.getItem('beast_api_key') || '',
             selectedMeals: JSON.parse(localStorage.getItem('beast_local_meals')) || {
-                breakfast: MEAL_LIBRARY.breakfast[0],
-                lunch: MEAL_LIBRARY.lunch[0],
-                dinner: MEAL_LIBRARY.dinner[0]
+                breakfast: MEAL_LIBRARY.breakfast[0], lunch: MEAL_LIBRARY.lunch[0], dinner: MEAL_LIBRARY.dinner[0]
             }
         };
 
-        const HEIGHT_INCHES = 75; // 6'3"
+        const HEIGHT_INCHES = 75;
 
         window.addEventListener('auth-ready', () => {
             document.getElementById('app-container').style.opacity = '1';
             if (!window.isLocalMode) syncData();
-            else {
-                document.getElementById('mode-status').innerText = "Mode: Browser Storage (Local)";
-                document.getElementById('mode-status').className = "text-[10px] text-yellow-500 mt-4 text-center uppercase font-black";
-                updateStatsUI();
-                renderHabits();
-                renderSupps();
-                renderLatestMetrics();
-                renderMeals();
-            }
+            renderAll();
         });
 
+        function renderAll() {
+            updateStatsUI();
+            renderHabits();
+            renderSupps();
+            renderLatestMetrics();
+            renderMeals();
+            renderToday();
+        }
+
         async function syncData() {
-            const { onSnapshot, collection, query, doc } = window.firestoreUtils;
+            const { onSnapshot, collection, doc } = window.firestoreUtils;
             const user = window.currentUser;
             if (!user) return;
-            document.getElementById('mode-status').innerText = "Mode: Cloud Sync Active";
-            document.getElementById('mode-status').className = "text-[10px] text-emerald-500 mt-4 text-center uppercase font-black";
             document.getElementById('sync-indicator').classList.remove('hidden');
 
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'settings', 'profile'), (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    appState.drinks = data.drinks || 0;
-                    appState.water = data.water || 0;
-                    appState.protein = data.protein || 0;
-                    appState.apiKey = data.apiKey || '';
-                    if (data.selectedMeals) appState.selectedMeals = data.selectedMeals;
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'settings', 'profile'), (ds) => {
+                if (ds.exists()) {
+                    const d = ds.data();
+                    appState.drinks = d.drinks || 0; appState.water = d.water || 0; 
+                    appState.protein = d.protein || 0; appState.apiKey = d.apiKey || '';
+                    if (d.selectedMeals) appState.selectedMeals = d.selectedMeals;
                     updateStatsUI();
-                    renderMeals();
-                } else { renderMeals(); }
+                }
             });
 
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'habits'), (docSnap) => {
-                appState.habits = docSnap.exists() ? docSnap.data() : {};
-                renderHabits();
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'habits'), (ds) => {
+                appState.habits = ds.exists() ? ds.data() : {}; renderHabits();
             });
 
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'supps'), (docSnap) => {
-                appState.supps = docSnap.exists() ? docSnap.data().list || DEFAULT_SUPPS : DEFAULT_SUPPS;
-                renderSupps();
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'supps'), (ds) => {
+                appState.supps = ds.exists() ? ds.data().list || DEFAULT_SUPPS : DEFAULT_SUPPS; renderSupps();
+            });
+
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'planner'), (ds) => {
+                appState.planner = ds.exists() ? ds.data() : {}; renderToday();
             });
 
             onSnapshot(collection(window.db, 'artifacts', window.appId, 'users', user.uid, 'metrics'), (snap) => {
@@ -394,52 +374,54 @@
                 renderLatestMetrics();
             });
 
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'shopping'), (docSnap) => {
-                appState.shopping = docSnap.exists() ? docSnap.data().list || DEFAULT_SHOPPING : DEFAULT_SHOPPING;
-            });
-
             setTimeout(() => document.getElementById('sync-indicator').classList.add('hidden'), 1000);
         }
 
-        // --- LOCAL DATA PERSISTENCE FALLBACK ---
         function saveLocalFallback() {
             if (window.isLocalMode) {
                 localStorage.setItem('beast_local_habits', JSON.stringify(appState.habits));
                 localStorage.setItem('beast_local_supps', JSON.stringify(appState.supps));
-                localStorage.setItem('beast_local_shop', JSON.stringify(appState.shopping));
-                localStorage.setItem('beast_local_metrics', JSON.stringify(appState.metrics));
                 localStorage.setItem('beast_local_drinks', appState.drinks);
                 localStorage.setItem('beast_local_water', appState.water);
                 localStorage.setItem('beast_local_protein', appState.protein);
                 localStorage.setItem('beast_local_meals', JSON.stringify(appState.selectedMeals));
+                localStorage.setItem('beast_local_planner', JSON.stringify(appState.planner));
                 updateStatsUI();
             }
         }
 
-        // --- UI & LOGIC ---
+        function showModal(title, body) {
+            const titleEl = document.getElementById('modal-title');
+            const bodyEl = document.getElementById('modal-body');
+            const modal = document.getElementById('content-modal');
+            if (titleEl) titleEl.innerText = title;
+            if (bodyEl) bodyEl.innerHTML = body;
+            if (modal) modal.classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeModal() { document.getElementById('content-modal').classList.add('hidden'); }
+
         function renderHabits() {
             const grid = document.getElementById('habit-grid');
             if (!grid) return;
             grid.innerHTML = '';
             const today = new Date(); today.setHours(0,0,0,0);
             let missedConsecutive = 0; let ruleBroken = false;
-
             for (let i = 6; i >= 0; i--) {
                 const d = new Date(today); d.setDate(today.getDate() - i);
                 const key = d.toISOString().split('T')[0];
                 const label = d.toLocaleDateString('en-US', { weekday: 'short' })[0];
                 const checked = appState.habits[key];
                 const isPast = d < today;
-                
-                let cls = "pending-day"; let ico = "circle";
-                if (checked) { cls = "completed-day border border-blue-400/50"; ico = "check"; missedConsecutive = 0; }
-                else if (isPast) { cls = "missed-day"; ico = "x"; missedConsecutive++; }
+                let cls = checked ? "completed-day border border-blue-400/50" : (isPast ? "missed-day" : "pending-day");
+                let ico = checked ? "check" : (isPast ? "x" : "circle");
+                if (checked) missedConsecutive = 0; else if (isPast) missedConsecutive++;
                 if (missedConsecutive >= 2) ruleBroken = true;
-                
                 const btn = document.createElement('button');
                 btn.onclick = () => toggleHabit(key);
                 btn.className = `flex flex-col items-center p-2 rounded-xl transition-all ${cls}`;
-                btn.innerHTML = `<span class="text-[10px] font-black">${label}</span><i data-lucide="${ico}" class="w-4 h-4 mt-1 text-slate-100"></i>`;
+                btn.innerHTML = `<span class="text-[10px] font-black">${label}</span><i data-lucide="${ico}" class="w-4 h-4 mt-1"></i>`;
                 grid.appendChild(btn);
             }
             if (ruleBroken) document.getElementById('habit-section').classList.add('rule-broken');
@@ -447,234 +429,186 @@
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
+        async function toggleHabit(key) {
+            appState.habits[key] = !appState.habits[key];
+            if (window.isLocalMode) saveLocalFallback();
+            else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'habits'), appState.habits);
+            renderHabits();
+        }
+
         function renderSupps() {
             const list = document.getElementById('supp-list');
             if (!list) return;
             list.innerHTML = appState.supps.map((s, idx) => `
-                <div onclick="toggleSupp(${idx})" class="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50 cursor-pointer hover:bg-slate-800 transition">
+                <div onclick="toggleSupp(${idx})" class="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50 cursor-pointer hover:bg-slate-800 transition text-left">
                     <div class="flex items-center gap-3">
                         <i data-lucide="${s.checked ? 'check-circle' : 'circle'}" class="w-5 h-5 ${s.checked ? 'text-emerald-500' : 'text-slate-600'}"></i>
-                        <div><p class="text-xs font-bold ${s.checked ? 'line-through text-slate-500' : ''}">${s.name}</p><p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest">${s.time}</p></div>
+                        <div><p class="text-xs font-bold ${s.checked ? 'line-through text-slate-500' : ''}">${s.name}</p><p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-left">${s.time}</p></div>
                     </div>
-                </div>
-            `).join('');
-
-            const manage = document.getElementById('supp-manage-list');
-            if (manage) {
-                manage.innerHTML = appState.supps.map((s, idx) => `<div class="flex justify-between p-2 bg-slate-900 rounded mb-1 text-slate-100"><span class="text-xs font-bold">${s.name}</span><button onclick="deleteSupp(${idx})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`).join('');
-            }
+                </div>`).join('');
             if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        async function toggleSupp(idx) {
+            appState.supps[idx].checked = !appState.supps[idx].checked;
+            if (window.isLocalMode) saveLocalFallback();
+            else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            renderSupps();
         }
 
         function renderMeals() {
             const grid = document.getElementById('meal-grid');
             if (!grid) return;
-            const categories = ['breakfast', 'lunch', 'dinner'];
-            grid.innerHTML = categories.map(cat => {
+            grid.innerHTML = ['breakfast', 'lunch', 'dinner'].map(cat => {
                 const meal = appState.selectedMeals[cat];
                 return `
-                <div class="bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 flex flex-col">
-                    <div class="flex justify-between items-start mb-2 text-slate-100">
+                <div class="bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 flex flex-col text-left">
+                    <div class="flex justify-between items-start mb-2">
                         <h4 class="text-[10px] font-black uppercase text-blue-400 beast-font">${cat}</h4>
                         <span class="text-[9px] font-bold text-slate-500">${meal.macros}</span>
                     </div>
-                    <p class="text-xs font-bold mb-1 uppercase tracking-tighter text-slate-100 h-8 line-clamp-2">${meal.name}</p>
+                    <p class="text-xs font-bold mb-1 uppercase tracking-tighter h-8 line-clamp-2">${meal.name}</p>
                     <div class="mt-4 flex gap-2">
                         <button onclick="generateRecipe('${cat}')" class="flex-1 text-[10px] bg-blue-600/10 text-blue-400 py-2 rounded-lg font-black uppercase border border-blue-500/20 hover:bg-blue-600/20 transition">Draft ✨</button>
-                        <button onclick="openMealSelector('${cat}')" class="p-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition" title="Swap Meal"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>
+                        <button onclick="openMealSelector('${cat}')" class="p-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>
                     </div>
-                </div>
-                `;
+                </div>`;
             }).join('');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
         function openMealSelector(category) {
             const options = MEAL_LIBRARY[category];
-            let html = `<div class="grid grid-cols-1 gap-3 pb-20">`;
+            let html = `<div class="grid grid-cols-1 gap-3 pb-20 text-left">`;
             options.forEach((meal, idx) => {
                 html += `
                     <div onclick="selectMeal('${category}', ${idx})" class="p-4 bg-slate-800 rounded-xl border border-slate-700 hover:border-blue-500 cursor-pointer transition">
-                        <div class="flex justify-between items-start">
-                            <p class="text-sm font-bold text-slate-100">${meal.name}</p>
+                        <div class="flex justify-between items-start text-left">
+                            <p class="text-sm font-bold text-slate-100 text-left">${meal.name}</p>
                             <span class="text-[10px] text-blue-400 font-black">${meal.macros}</span>
                         </div>
-                        <p class="text-[10px] text-slate-400 mt-1">${meal.blueprint}</p>
-                    </div>
-                `;
+                        <p class="text-[10px] text-slate-400 mt-1 text-left">${meal.blueprint}</p>
+                    </div>`;
             });
-            html += `</div>`;
-            showModal(`Choose ${category.toUpperCase()}`, html);
+            showModal(`Choose ${category.toUpperCase()}`, html + `</div>`);
         }
 
         async function selectMeal(category, index) {
             appState.selectedMeals[category] = MEAL_LIBRARY[category][index];
             if (window.isLocalMode) saveLocalFallback();
             else await updateProfile({ selectedMeals: appState.selectedMeals });
-            renderMeals();
-            closeModal();
+            renderMeals(); closeModal();
+        }
+
+        function renderToday() {
+            const container = document.getElementById('today-tasks');
+            const badge = document.getElementById('day-type-badge');
+            if (!container || !badge) return;
+            const now = new Date();
+            const dateKey = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
+            const plannedType = appState.planner[dateKey];
+            let displayType = "", tasks = [];
+            if (plannedType) {
+                displayType = plannedType;
+                const defaultMatch = BEAST_SCHEDULE.find(s => s.type.toLowerCase().includes(plannedType.toLowerCase()) || plannedType.toLowerCase().includes(s.type.split(' ')[0].toLowerCase()));
+                tasks = defaultMatch ? defaultMatch.tasks : [`Target: ${plannedType}`];
+            } else {
+                const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
+                const plan = BEAST_SCHEDULE.find(s => s.day === dayName);
+                if (plan) { displayType = plan.type; tasks = plan.tasks; }
+            }
+            badge.innerText = displayType;
+            container.innerHTML = tasks.map(t => `<div class="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50 flex gap-2 text-slate-100 text-left"><div class="w-1 h-1 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div><span class="text-[11px] font-bold uppercase tracking-tighter text-left">${t}</span></div>`).join('');
         }
 
         async function updateProfile(update) {
-            const user = window.currentUser;
             const { doc, setDoc } = window.firestoreUtils;
-            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'settings', 'profile'), { ...appState, ...update }, { merge: true });
+            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'settings', 'profile'), { ...appState, ...update }, { merge: true });
         }
 
-        async function toggleHabit(key) {
-            appState.habits[key] = !appState.habits[key];
-            if (window.isLocalMode) { saveLocalFallback(); renderHabits(); }
+        async function savePlannerDate(dateKey, value) {
+            appState.planner[dateKey] = value;
+            if (window.isLocalMode) saveLocalFallback();
             else {
                 const { doc, setDoc } = window.firestoreUtils;
-                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'habits'), appState.habits);
+                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'planner'), appState.planner);
             }
+            renderToday(); renderMonthlyPlanner();
+        }
+
+        function renderMonthlyPlanner() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const startDay = new Date(year, month, 1).getDay();
+            const monthName = now.toLocaleString('default', { month: 'long' });
+            let html = `<div class="mb-6 bg-slate-800/50 p-4 rounded-2xl border border-slate-700"><h3 class="text-lg font-black beast-font text-blue-400 text-left">${monthName} ${year}</h3></div><div class="grid grid-cols-7 gap-1 mb-6 text-center text-left">${['S','M','T','W','T','F','S'].map(d => `<span class="text-[10px] font-black text-slate-600">${d}</span>`).join('')}${Array(startDay).fill(0).map(() => `<div></div>`).join('')}${Array(daysInMonth).fill(0).map((_, i) => { const day = i + 1; const key = `${year}-${(month+1).toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}`; const isT = new Date().getDate() === day; const p = appState.planner[key]; return `<button onclick="openDayPlan('${key}')" class="p-2 rounded-lg text-xs font-bold border ${isT ? 'border-blue-400 bg-blue-400/10' : p ? 'border-emerald-500 bg-emerald-500/5 text-emerald-400' : 'border-slate-700 text-slate-500'}">${day}${p ? `<div class='w-1 h-1 bg-emerald-400 rounded-full mx-auto mt-1'></div>` : ''}</button>`; }).join('')}</div>`;
+            showModal("Monthly Planner", html);
+        }
+
+        async function openDayPlan(key) {
+            const current = appState.planner[key] || '';
+            const html = `<div class="space-y-6 text-left"><div class="bg-slate-900 p-4 rounded-xl border border-slate-700 text-left"><h4 class="text-xs uppercase font-black text-blue-400 mb-3 tracking-widest text-left">Set Workout: ${key}</h4><div class="grid grid-cols-2 gap-2 mb-4">${['Lower A', 'Upper A', 'Lower B', 'Upper B', 'Zone 2', 'VO2 Max', 'Rest'].map(t => `<button onclick="savePlannerDate('${key}', '${t}')" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-[10px] font-bold uppercase ${current === t ? 'bg-blue-600 border-blue-400' : ''}">${t}</button>`).join('')}</div><input type="text" id="p-custom" value="${current}" placeholder="Or custom name..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white mb-2"><button onclick="savePlannerDate('${key}', document.getElementById('p-custom').value)" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs tracking-widest text-slate-100">Update Plan</button></div><button onclick="renderMonthlyPlanner()" class="text-xs text-slate-500 underline uppercase font-bold text-left">Back to Calendar</button></div>`;
+            showModal("Edit Day", html);
         }
 
         async function addAlcohol() { 
-            if (appState.drinks >= 3) {
-                showModal("Legacy Warning", "Limit reached. Alcohol pauses fat burning and blunts growth hormone release. Choose sparking water for your 12% goal.");
-                return; 
-            } 
-            appState.drinks++;
-            if (window.isLocalMode) saveLocalFallback();
-            else await updateProfile({ drinks: appState.drinks }); 
+            if (appState.drinks >= 3) { showModal("Warning", "Limit reached. Stay dry for 12% BF."); return; }
+            appState.drinks++; if (window.isLocalMode) saveLocalFallback(); else await updateProfile({ drinks: appState.drinks });
         }
-        async function addWater() { 
-            appState.water = Math.min(8, appState.water + 0.5);
-            if (window.isLocalMode) saveLocalFallback();
-            else await updateProfile({ water: appState.water }); 
-        }
-        async function addProtein() { 
-            appState.protein = Math.min(300, appState.protein + 25);
-            if (window.isLocalMode) saveLocalFallback();
-            else await updateProfile({ protein: appState.protein }); 
-        }
+        async function addWater() { appState.water = Math.min(8, appState.water + 0.5); if (window.isLocalMode) saveLocalFallback(); else await updateProfile({ water: appState.water }); }
+        async function addProtein() { appState.protein = Math.min(300, appState.protein + 25); if (window.isLocalMode) saveLocalFallback(); else await updateProfile({ protein: appState.protein }); }
 
         async function addSupp() {
-            const name = document.getElementById('new-supp-name').value;
-            const time = document.getElementById('new-supp-time').value;
-            if(!name) return;
-            appState.supps.push({ name, time: time || 'Daily', checked: false });
-            if (window.isLocalMode) { saveLocalFallback(); renderSupps(); }
-            else {
-                const { doc, setDoc } = window.firestoreUtils;
-                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
-            }
-            document.getElementById('new-supp-name').value = '';
-            document.getElementById('new-supp-time').value = '';
-        }
-
-        async function toggleSupp(idx) {
-            appState.supps[idx].checked = !appState.supps[idx].checked;
-            if (window.isLocalMode) { saveLocalFallback(); renderSupps(); }
-            else {
-                const { doc, setDoc } = window.firestoreUtils;
-                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
-            }
+            const n = document.getElementById('new-supp-name').value, t = document.getElementById('new-supp-time').value;
+            if(!n) return; appState.supps.push({ name: n, time: t || 'Daily', checked: false });
+            if (window.isLocalMode) saveLocalFallback(); else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            renderSupps();
         }
 
         async function deleteSupp(idx) {
             appState.supps.splice(idx, 1);
-            if (window.isLocalMode) { saveLocalFallback(); renderSupps(); }
-            else {
-                const { doc, setDoc } = window.firestoreUtils;
-                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
-            }
+            if (window.isLocalMode) saveLocalFallback(); else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            renderSupps();
         }
 
         async function apiCall(prompt, system) {
-            if (!appState.apiKey) { showModal("Key Required", "Add Google AI API Key in Settings ✨."); return null; }
+            if (!appState.apiKey) { showModal("Key Required", "Add AI Key in Settings ✨."); return null; }
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${appState.apiKey}`;
             const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: system }] } };
-            try {
-                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                const data = await response.json();
-                return data.candidates?.[0]?.content?.parts?.[0]?.text;
-            } catch (e) { return null; }
+            try { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const d = await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text; } catch (e) { return null; }
         }
 
         async function runPerformanceAudit() {
-            showModal("Consulting Bio-Coach ✨", "<div class='animate-pulse text-blue-400 font-black text-center py-20 uppercase'>ANALYZING DATA...</div>");
-            const res = await apiCall(`Audit metrics: BF% ${appState.metrics[0]?.bf || 'N/A'}, Protein: ${appState.protein}g, Water: ${appState.water}L. Goal: 12% BF. He is a dad. Give hard truths.`, "Audit agent.");
-            if (res) showModal("Audit ✨", `<div class="p-6 bg-slate-900/50 rounded-2xl leading-relaxed text-slate-100">${res.replace(/\n/g, '<br>')}</div>`);
+            showModal("Bio-Coach ✨", "<div class='animate-pulse text-blue-400 text-center py-20 font-black'>ANALYZING DATA...</div>");
+            const res = await apiCall("Audit metrics vs 12% BF goal. blunt feedback.", "Audit agent.");
+            if (res) showModal("Audit ✨", `<div class="text-left text-sm prose prose-invert">${res.replace(/\n/g, '<br>')}</div>`);
         }
 
-        async function generateRecipe(category) {
-            const meal = appState.selectedMeals[category];
-            showModal("Syncing...", "<div class='animate-pulse text-blue-400 text-center py-20 font-black'>AI BIO-CHEF DRAFTING ✨...</div>");
-            const sys = "High-performance Chef for a 6'3 father. Use 'Modular Bulk' logic. Explain clearly how to prep the meal so it hits 45g+ protein for the dad while being delicious for kids. Include total macros.";
-            const res = await apiCall(`Provide a specific, family-modular recipe for "${meal.name}". Blueprint: ${meal.blueprint}. Macros: ${meal.macros}.`, sys);
-            if (res) showModal(meal.name, `<div class="recipe-container text-slate-100">${res.replace(/\n/g, '<br>')}</div>`);
+        async function generateRecipe(cat) {
+            const m = appState.selectedMeals[cat];
+            showModal("Drafting ✨", "<div class='animate-pulse text-blue-400 text-center py-20 font-black'>AI GENERATING...</div>");
+            const res = await apiCall(`Recipe for ${m.name}: ${m.blueprint}`, "Bio-Chef.");
+            if (res) showModal(m.name, `<div class="recipe-container text-left">${res.replace(/\n/g, '<br>')}</div>`);
         }
 
         function generateDraftSelector() {
-            const html = `
-                <div class="grid grid-cols-1 gap-4">
-                    <button onclick="generateRecipe('breakfast')" class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left hover:border-blue-500 transition">
-                        <p class="text-xs uppercase text-slate-500 font-black">Breakfast</p>
-                        <p class="font-bold text-slate-100">${appState.selectedMeals.breakfast.name}</p>
-                    </button>
-                    <button onclick="generateRecipe('lunch')" class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left hover:border-blue-500 transition">
-                        <p class="text-xs uppercase text-slate-500 font-black">Lunch</p>
-                        <p class="font-bold text-slate-100">${appState.selectedMeals.lunch.name}</p>
-                    </button>
-                    <button onclick="generateRecipe('dinner')" class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left hover:border-blue-500 transition">
-                        <p class="text-xs uppercase text-slate-500 font-black">Dinner</p>
-                        <p class="font-bold text-slate-100">${appState.selectedMeals.dinner.name}</p>
-                    </button>
-                </div>
-            `;
-            showModal("Draft Recipe ✨", html);
+            const h = `<div class="grid grid-cols-1 gap-4 text-left">${Object.keys(appState.selectedMeals).map(c => `<button onclick="generateRecipe('${c}')" class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left hover:border-blue-500 transition"><p class="text-[10px] uppercase text-slate-500 font-black text-left">${c}</p><p class="font-bold text-slate-100 text-left">${appState.selectedMeals[c].name}</p></button>`).join('')}</div>`;
+            showModal("Select Meal", h);
         }
 
         async function getMotivation() {
-            showModal("Focusing...", "<div class='animate-pulse text-yellow-400 text-center py-20 font-black tracking-widest text-lg'>SYNTHESIZING LEGACY...</div>");
-            const res = await apiCall("Legacy motivator for a dad. Start with a warrior quote. Speak about his kids watching his results.", "Stoic Coach for fathers.");
-            if (res) showModal("Focus ✨", `<div class="p-8 bg-slate-800 rounded-3xl italic text-center text-slate-100 text-lg leading-relaxed border-l-4 border-yellow-500">"${res}"</div>`);
-        }
-
-        async function toggleShopItem(idx) {
-            appState.shopping[idx].checked = !appState.shopping[idx].checked;
-            if (window.isLocalMode) saveLocalFallback();
-            else {
-                const { doc, setDoc } = window.firestoreUtils;
-                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'shopping'), { list: appState.shopping });
-            }
-            renderShoppingList();
-        }
-
-        function renderShoppingList() {
-            let html = `<div class="space-y-6 pb-20 text-slate-100">`;
-            const cats = [...new Set(appState.shopping.map(i => i.cat))];
-            cats.forEach(cat => {
-                html += `<div><h4 class="text-blue-400 font-black text-xs uppercase mb-3 border-b border-slate-800 pb-1">${cat}</h4>`;
-                appState.shopping.filter(i => i.cat === cat).forEach(item => {
-                    const idx = appState.shopping.findIndex(orig => orig.name === item.name && orig.cat === cat);
-                    html += `<div onclick="toggleShopItem(${idx})" class="flex items-center gap-3 p-3 bg-slate-800/40 rounded-xl border border-slate-700/50 mb-2 cursor-pointer">
-                        <i data-lucide="${item.checked ? 'check-square' : 'square'}" class="w-5 h-5 ${item.checked ? 'text-blue-500' : 'text-slate-600'}"></i>
-                        <span class="text-sm ${item.checked ? 'line-through text-slate-600' : ''} font-bold">${item.name}</span>
-                    </div>`;
-                });
-                html += `</div>`;
-            });
-            document.getElementById('modal-body').innerHTML = html + `</div>`;
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+            showModal("Focusing...", "<div class='animate-pulse text-yellow-400 text-center py-20 font-black'>ENGAGING MINDSET...</div>");
+            const res = await apiCall("I want to skip. Legacy motivator.", "Stoic Coach.");
+            if (res) showModal("Focus ✨", `<div class="p-8 bg-slate-800 rounded-3xl italic text-left border-l-4 border-yellow-500">"${res}"</div>`);
         }
 
         async function logMetrics() {
-            const weight = parseFloat(document.getElementById('m-weight').value);
-            const waist = parseFloat(document.getElementById('m-waist').value);
-            const neck = parseFloat(document.getElementById('m-neck').value);
-            if (!weight || !waist || !neck) return;
-            const bf = (86.010 * Math.log10(waist - neck) - 70.041 * Math.log10(HEIGHT_INCHES) + 36.76).toFixed(1);
-            if (window.isLocalMode) {
-                appState.metrics.unshift({ weight, waist, neck, bf, timestamp: Date.now(), dateLabel: new Date().toLocaleDateString() });
-                saveLocalFallback();
-                renderLatestMetrics();
-            } else {
-                const { collection, addDoc } = window.firestoreUtils;
-                await addDoc(collection(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'metrics'), { weight, waist, neck, bf, timestamp: Date.now(), dateLabel: new Date().toLocaleDateString() });
-            }
+            const w = parseFloat(document.getElementById('m-weight').value), wa = parseFloat(document.getElementById('m-waist').value), n = parseFloat(document.getElementById('m-neck').value);
+            if (!w || !wa || !n) return; const bf = (86.010 * Math.log10(wa - n) - 70.041 * Math.log10(75) + 36.76).toFixed(1);
+            if (window.isLocalMode) { appState.metrics.unshift({ weight: w, bf, dateLabel: new Date().toLocaleDateString(), timestamp: Date.now() }); saveLocalFallback(); }
+            else { await window.firestoreUtils.addDoc(window.firestoreUtils.collection(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'metrics'), { weight: w, bf, dateLabel: new Date().toLocaleDateString(), timestamp: Date.now() }); }
             closeModal();
         }
 
@@ -693,88 +627,36 @@
             document.getElementById('water-count').innerText = `${appState.water.toFixed(1)}L`;
             document.getElementById('protein-total').innerText = `${appState.protein}g`;
             document.getElementById('api-key-input').value = appState.apiKey || '';
-            renderDate(); renderToday();
-        }
-
-        function renderDate() {
             const now = new Date();
-            const banner = document.getElementById('day-of-week-banner');
-            const display = document.getElementById('current-date-display');
-            if (banner) banner.innerText = now.toLocaleDateString('en-US', { weekday: 'long' });
-            if (display) display.innerText = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            document.getElementById('day-of-week-banner').innerText = now.toLocaleDateString('en-US', { weekday: 'long' });
+            document.getElementById('current-date-display').innerText = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            renderToday();
         }
 
-        function renderToday() {
-            const container = document.getElementById('today-tasks');
-            const badge = document.getElementById('day-type-badge');
-            if (!container || !badge) return;
-            const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-            const plan = BEAST_SCHEDULE.find(s => s.day === dayName);
-            if (plan) {
-                badge.innerText = plan.type;
-                container.innerHTML = plan.tasks.map(t => `<div class="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50 flex gap-2 text-slate-100 text-left"><div class="w-1 h-1 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div><span class="text-[11px] font-bold uppercase tracking-tighter">${t}</span></div>`).join('');
-            }
-        }
-
-        function showTab(type) {
-            if (type === 'progress') {
-                showModal("Analytics Dashboard", `<div class="space-y-6">
-                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-slate-100 text-left">
-                        <h4 class="text-xs font-black uppercase text-blue-400 mb-4">New Entry</h4>
-                        <div class="grid grid-cols-3 gap-3 mb-4">
-                            <input type="number" id="m-weight" placeholder="lbs" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white">
-                            <input type="number" id="m-waist" placeholder="waist" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white">
-                            <input type="number" id="m-neck" placeholder="neck" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white">
-                        </div>
-                        <button onclick="logMetrics()" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs">Save Metrics</button>
-                    </div>
-                    <div class="space-y-2 text-slate-100">${appState.metrics.map(m => `<div class="flex justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50"><div><p class="text-[10px] uppercase font-bold text-slate-400">${m.dateLabel}</p><p class="text-sm font-bold">${m.weight} lbs</p></div><div class="text-right"><p class="text-[10px] uppercase font-bold text-slate-500">BF%</p><p class="text-sm text-blue-400 font-black">${m.bf}%</p></div></div>`).join('')}</div>
-                </div>`);
-            } else if (type === 'shopping') {
-                showModal("Supply List", ""); renderShoppingList();
-            } else if (type === 'workouts') {
-                showModal("Tall Cues", `<div class="space-y-4 text-slate-100 text-left"><div class="p-4 bg-slate-800 rounded-xl border border-slate-700"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">FLOOR PRESS</h4><p class="text-xs text-slate-300">Stop elbows at floor to protect long shoulder capsules while overloading triceps.</p></div><div class="p-4 bg-slate-800 rounded-xl border border-slate-700"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">HACK SQUAT</h4><p class="text-xs text-slate-300">Feet low. Upright torso. Forces knee flexion to grow quads without lower back fatigue.</p></div></div>`);
-            } else if (type === 'med') {
-                showModal("MED Routine", `<ul class="space-y-3 text-slate-100 text-left"><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Goblet Squat</span><span class="font-black">3x15</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Pushups</span><span class="font-black text-blue-400">3xMAX</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>DB Row</span><span class="font-black">3x15</span></li></ul>`);
-            } else if (type === 'roadmap') {
-                showModal("4-Year Periodization", `
-                    <div class="space-y-4 text-slate-100 pb-20 text-left">
-                        <div class="p-4 bg-blue-600/20 border border-blue-400 rounded-xl"><h4 class="font-black text-xs uppercase text-blue-400 mb-1">Year 1: Foundation (Current)</h4><p class="text-[11px] text-slate-300">Goal: Drop BF to 15%. Master biomechanical cues for 6'3 frame.</p></div>
-                        <div class="p-4 bg-slate-800 rounded-xl opacity-60"><h4 class="font-black text-xs uppercase mb-1">Year 2: Beast Hypertrophy</h4><p class="text-[11px] text-slate-400">Goal: Max muscle accretion. Transition to PPL split.</p></div>
-                        <div class="p-4 bg-slate-800 rounded-xl opacity-40"><h4 class="font-black text-xs uppercase mb-1">Year 3: Strength & Density</h4><p class="text-[11px] text-slate-400">Goal: Hardness and 1RM power. Jim Wendler 5/3/1 blocks.</p></div>
-                        <div class="p-4 bg-slate-800 rounded-xl opacity-20"><h4 class="font-black text-xs uppercase mb-1">Year 4: 8-Pack Refinement</h4><p class="text-[11px] text-slate-400">Goal: Absolute beast specimen status. Elite vascularity.</p></div>
-                    </div>`);
-            }
+        function showTab(t) {
+            if (t === 'progress') {
+                const h = `<div class="space-y-6 text-left"><div class="bg-slate-800 p-6 rounded-2xl border border-slate-700"><h4 class="text-xs font-black uppercase text-blue-400 mb-4 tracking-widest text-left">New Entry</h4><div class="grid grid-cols-3 gap-3 mb-4"><div><label class="text-[9px] uppercase text-slate-500 mb-1 block">Weight</label><input type="number" id="m-weight" placeholder="lbs" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full"></div><div><label class="text-[9px] uppercase text-slate-500 mb-1 block">Waist</label><input type="number" id="m-waist" placeholder="in" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full"></div><div><label class="text-[9px] uppercase text-slate-500 mb-1 block">Neck</label><input type="number" id="m-neck" placeholder="in" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full"></div></div><button onclick="logMetrics()" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs tracking-widest text-slate-100">Save Analytics</button></div><div class="space-y-2">${appState.metrics.map(m => `<div class="flex justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50"><div><p class="text-[10px] uppercase font-bold text-slate-400 text-left">${m.dateLabel}</p><p class="text-sm font-bold text-left">${m.weight} lbs</p></div><div class="text-right"><p class="text-[10px] uppercase font-bold text-slate-500 text-right">BF%</p><p class="text-sm text-blue-400 font-black">${m.bf}%</p></div></div>`).join('')}</div></div>`;
+                showModal("Analytics", h);
+            } else if (t === 'shopping') renderShoppingList();
+            else if (t === 'workouts') showModal("Tall Cues", `<div class="space-y-4 text-left"><div class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">FLOOR PRESS</h4><p class="text-xs text-slate-300">Stop elbows at floor to protect long humerus shoulders.</p></div><div class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">HACK SQUAT</h4><p class="text-xs text-slate-300 text-left">Feet low. Upright torso. Forces knee flexion.</p></div></div>`);
+            else if (t === 'med') showModal("MED Routine", `<ul class="space-y-3 text-left"><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Goblet Squat</span><span class="font-black">3x15</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Pushups</span><span class="font-black text-blue-400">3xMAX</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>DB Row</span><span class="font-black">3x15</span></li></ul>`);
+            else if (t === 'planner') renderMonthlyPlanner();
         }
 
         async function saveSettings() {
-            const val = document.getElementById('api-key-input').value;
-            const fbConfig = document.getElementById('firebase-config-input').value;
-            appState.apiKey = val;
-            localStorage.setItem('beast_api_key', val);
-            if(fbConfig) localStorage.setItem('beast_custom_firebase_config', fbConfig);
-            if (!window.isLocalMode) await updateProfile({ apiKey: val });
-            toggleSettings();
-            location.reload(); // Reload to apply Firebase config if added
+            const v = document.getElementById('api-key-input').value, fb = document.getElementById('firebase-config-input').value;
+            localStorage.setItem('beast_api_key', v); if(fb) localStorage.setItem('beast_custom_firebase_config', fb);
+            location.reload();
         }
 
         function toggleSettings() { 
             document.getElementById('settings-modal').classList.toggle('hidden');
             if(!document.getElementById('settings-modal').classList.contains('hidden')) {
+                document.getElementById('api-key-input').value = appState.apiKey || '';
                 document.getElementById('firebase-config-input').value = localStorage.getItem('beast_custom_firebase_config') || '';
             }
         }
         function toggleSuppModal() { document.getElementById('supp-modal').classList.toggle('hidden'); }
-        function closeModal() { document.getElementById('content-modal').classList.add('hidden'); }
-        function showModal(title, body) {
-            const titleEl = document.getElementById('modal-title');
-            const bodyEl = document.getElementById('modal-body');
-            const modal = document.getElementById('content-modal');
-            if (titleEl) titleEl.innerText = title;
-            if (bodyEl) bodyEl.innerHTML = body;
-            if (modal) modal.classList.remove('hidden');
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
     </script>
 </body>
 </html>
