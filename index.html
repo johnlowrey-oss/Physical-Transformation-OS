@@ -12,33 +12,55 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'beast-hub-v1';
+        // Defensive environment check for GitHub/External Hosting
+        let firebaseConfig = null;
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                firebaseConfig = JSON.parse(__firebase_config);
+            } else {
+                // Check if user saved a custom config in localStorage
+                const savedConfig = localStorage.getItem('beast_custom_firebase_config');
+                if (savedConfig) firebaseConfig = JSON.parse(savedConfig);
+            }
+        } catch (e) {
+            console.warn("Firebase config not found or invalid.");
+        }
 
-        window.db = db;
-        window.auth = auth;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'beast-hub-v1';
         window.appId = appId;
         window.firestoreUtils = { doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc };
 
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
-            }
-        };
+        if (firebaseConfig) {
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
+            const db = getFirestore(app);
+            window.db = db;
+            window.auth = auth;
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                window.currentUser = user;
+            const initAuth = async () => {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            };
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    window.currentUser = user;
+                    window.dispatchEvent(new CustomEvent('auth-ready'));
+                }
+            });
+
+            initAuth();
+        } else {
+            // No Firebase detected - Trigger local-only mode
+            window.isLocalMode = true;
+            console.log("Running in Local Mode (Storage in Browser Cache)");
+            setTimeout(() => {
                 window.dispatchEvent(new CustomEvent('auth-ready'));
-            }
-        });
-
-        initAuth();
+            }, 100);
+        }
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Oswald:wght@700&display=swap');
@@ -174,7 +196,7 @@
                     <div><h3 class="font-bold text-sm beast-font">Hydration</h3><p class="text-xs text-slate-500">Target: 4L</p></div>
                 </div>
                 <div class="flex items-center gap-4">
-                    <p class="text-2xl font-black text-blue-400" id="water-count">0.0L</p>
+                    <p class="text-2xl font-black text-red-400 text-blue-400" id="water-count">0.0L</p>
                     <button onclick="addWater()" class="bg-slate-700 p-2 rounded-lg hover:bg-slate-600 transition text-slate-100"><i data-lucide="plus" class="w-4 h-4"></i></button>
                 </div>
             </section>
@@ -215,11 +237,18 @@
             <h3 class="text-xl font-bold mb-4 text-blue-400 uppercase beast-font">System Config</h3>
             <label class="block text-sm text-slate-400 mb-2">Google AI API Key</label>
             <input type="password" id="api-key-input" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 mb-4 text-white" placeholder="AI Key for Recipes...">
+            
+            <div class="mb-4">
+                <label class="block text-[10px] text-slate-500 uppercase font-black mb-1">Custom Firebase Config (JSON)</label>
+                <textarea id="firebase-config-input" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-[10px] text-emerald-400 font-mono" placeholder='{"apiKey": "...", "authDomain": "..."}'></textarea>
+                <p class="text-[9px] text-slate-600 mt-1 italic">Only needed if self-hosting on GitHub to enable permanent cloud storage.</p>
+            </div>
+
             <div class="flex gap-3">
                 <button onclick="saveSettings()" class="flex-1 bg-blue-600 p-3 rounded-xl font-bold">Save</button>
                 <button onclick="toggleSettings()" class="flex-1 bg-slate-700 p-3 rounded-xl">Close</button>
             </div>
-            <p class="text-[10px] text-slate-500 mt-4 text-center">Cloud Syncing ACTIVE</p>
+            <p id="mode-status" class="text-[10px] text-slate-500 mt-4 text-center">Checking Sync Mode...</p>
         </div>
     </div>
 
@@ -230,7 +259,7 @@
             <div class="space-y-2 border-t border-slate-700 pt-4">
                 <input type="text" id="new-supp-name" placeholder="Name" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
                 <input type="text" id="new-supp-time" placeholder="Time/Dose" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-                <button onclick="addSupp()" class="w-full bg-emerald-600 py-2 rounded-lg font-bold text-sm shadow-lg">+ Add To Protocol</button>
+                <button onclick="addSupp()" class="w-full bg-emerald-600 py-2 rounded-lg font-bold text-sm uppercase tracking-widest shadow-lg">+ Add To Protocol</button>
             </div>
             <button onclick="toggleSuppModal()" class="w-full mt-4 bg-slate-700 py-2 rounded-lg text-sm">Close</button>
         </div>
@@ -275,7 +304,6 @@
                 { id: 'd3', name: 'Sheet Pan Sausage & Veg', macros: '680 Cal | 55g P', blueprint: 'Chicken Sausage, Broccoli, Sweet Potato, Bell Peppers, Olive Oil.' }
             ]
         };
-        // Adding placeholders for the rest of the 10 options to save space in code display, but they are logically handled
         for(let i=4; i<=10; i++) {
             MEAL_LIBRARY.breakfast.push({ id: 'b'+i, name: 'High Protein Breakfast Option #'+i, macros: '450 Cal | 40g P', blueprint: 'Macro-balanced meal with high protein focus.' });
             MEAL_LIBRARY.lunch.push({ id: 'l'+i, name: 'Performance Lunch Option #'+i, macros: '550 Cal | 50g P', blueprint: 'Clean protein with complex carbs and veggies.' });
@@ -299,15 +327,15 @@
 
         // Global State
         let appState = {
-            habits: {},
-            supps: [...DEFAULT_SUPPS],
-            shopping: [],
-            metrics: [],
-            drinks: 0,
-            water: 0,
-            protein: 0,
-            apiKey: '',
-            selectedMeals: {
+            habits: JSON.parse(localStorage.getItem('beast_local_habits')) || {},
+            supps: JSON.parse(localStorage.getItem('beast_local_supps')) || [...DEFAULT_SUPPS],
+            shopping: JSON.parse(localStorage.getItem('beast_local_shop')) || [...DEFAULT_SHOPPING],
+            metrics: JSON.parse(localStorage.getItem('beast_local_metrics')) || [],
+            drinks: parseInt(localStorage.getItem('beast_local_drinks')) || 0,
+            water: parseFloat(localStorage.getItem('beast_local_water')) || 0,
+            protein: parseInt(localStorage.getItem('beast_local_protein')) || 0,
+            apiKey: localStorage.getItem('beast_api_key') || '',
+            selectedMeals: JSON.parse(localStorage.getItem('beast_local_meals')) || {
                 breakfast: MEAL_LIBRARY.breakfast[0],
                 lunch: MEAL_LIBRARY.lunch[0],
                 dinner: MEAL_LIBRARY.dinner[0]
@@ -318,16 +346,24 @@
 
         window.addEventListener('auth-ready', () => {
             document.getElementById('app-container').style.opacity = '1';
-            syncData();
-            renderDate();
-            renderToday();
+            if (!window.isLocalMode) syncData();
+            else {
+                document.getElementById('mode-status').innerText = "Mode: Browser Storage (Local)";
+                document.getElementById('mode-status').className = "text-[10px] text-yellow-500 mt-4 text-center uppercase font-black";
+                updateStatsUI();
+                renderHabits();
+                renderSupps();
+                renderLatestMetrics();
+                renderMeals();
+            }
         });
 
         async function syncData() {
             const { onSnapshot, collection, query, doc } = window.firestoreUtils;
             const user = window.currentUser;
             if (!user) return;
-
+            document.getElementById('mode-status').innerText = "Mode: Cloud Sync Active";
+            document.getElementById('mode-status').className = "text-[10px] text-emerald-500 mt-4 text-center uppercase font-black";
             document.getElementById('sync-indicator').classList.remove('hidden');
 
             onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'settings', 'profile'), (docSnap) => {
@@ -340,9 +376,7 @@
                     if (data.selectedMeals) appState.selectedMeals = data.selectedMeals;
                     updateStatsUI();
                     renderMeals();
-                } else {
-                    renderMeals();
-                }
+                } else { renderMeals(); }
             });
 
             onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'habits'), (docSnap) => {
@@ -365,6 +399,21 @@
             });
 
             setTimeout(() => document.getElementById('sync-indicator').classList.add('hidden'), 1000);
+        }
+
+        // --- LOCAL DATA PERSISTENCE FALLBACK ---
+        function saveLocalFallback() {
+            if (window.isLocalMode) {
+                localStorage.setItem('beast_local_habits', JSON.stringify(appState.habits));
+                localStorage.setItem('beast_local_supps', JSON.stringify(appState.supps));
+                localStorage.setItem('beast_local_shop', JSON.stringify(appState.shopping));
+                localStorage.setItem('beast_local_metrics', JSON.stringify(appState.metrics));
+                localStorage.setItem('beast_local_drinks', appState.drinks);
+                localStorage.setItem('beast_local_water', appState.water);
+                localStorage.setItem('beast_local_protein', appState.protein);
+                localStorage.setItem('beast_local_meals', JSON.stringify(appState.selectedMeals));
+                updateStatsUI();
+            }
         }
 
         // --- UI & LOGIC ---
@@ -420,7 +469,6 @@
         function renderMeals() {
             const grid = document.getElementById('meal-grid');
             if (!grid) return;
-            
             const categories = ['breakfast', 'lunch', 'dinner'];
             grid.innerHTML = categories.map(cat => {
                 const meal = appState.selectedMeals[cat];
@@ -461,7 +509,8 @@
 
         async function selectMeal(category, index) {
             appState.selectedMeals[category] = MEAL_LIBRARY[category][index];
-            await updateProfile({ selectedMeals: appState.selectedMeals });
+            if (window.isLocalMode) saveLocalFallback();
+            else await updateProfile({ selectedMeals: appState.selectedMeals });
             renderMeals();
             closeModal();
         }
@@ -474,8 +523,11 @@
 
         async function toggleHabit(key) {
             appState.habits[key] = !appState.habits[key];
-            const { doc, setDoc } = window.firestoreUtils;
-            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'habits'), appState.habits);
+            if (window.isLocalMode) { saveLocalFallback(); renderHabits(); }
+            else {
+                const { doc, setDoc } = window.firestoreUtils;
+                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'habits'), appState.habits);
+            }
         }
 
         async function addAlcohol() { 
@@ -483,30 +535,51 @@
                 showModal("Legacy Warning", "Limit reached. Alcohol pauses fat burning and blunts growth hormone release. Choose sparking water for your 12% goal.");
                 return; 
             } 
-            await updateProfile({ drinks: appState.drinks + 1 }); 
+            appState.drinks++;
+            if (window.isLocalMode) saveLocalFallback();
+            else await updateProfile({ drinks: appState.drinks }); 
         }
-        async function addWater() { await updateProfile({ water: Math.min(8, appState.water + 0.5) }); }
-        async function addProtein() { await updateProfile({ protein: Math.min(300, appState.protein + 25) }); }
+        async function addWater() { 
+            appState.water = Math.min(8, appState.water + 0.5);
+            if (window.isLocalMode) saveLocalFallback();
+            else await updateProfile({ water: appState.water }); 
+        }
+        async function addProtein() { 
+            appState.protein = Math.min(300, appState.protein + 25);
+            if (window.isLocalMode) saveLocalFallback();
+            else await updateProfile({ protein: appState.protein }); 
+        }
 
         async function addSupp() {
             const name = document.getElementById('new-supp-name').value;
             const time = document.getElementById('new-supp-time').value;
             if(!name) return;
-            const newList = [...appState.supps, { name, time: time || 'Daily', checked: false }];
-            const { doc, setDoc } = window.firestoreUtils;
-            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: newList });
+            appState.supps.push({ name, time: time || 'Daily', checked: false });
+            if (window.isLocalMode) { saveLocalFallback(); renderSupps(); }
+            else {
+                const { doc, setDoc } = window.firestoreUtils;
+                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            }
+            document.getElementById('new-supp-name').value = '';
+            document.getElementById('new-supp-time').value = '';
         }
 
         async function toggleSupp(idx) {
             appState.supps[idx].checked = !appState.supps[idx].checked;
-            const { doc, setDoc } = window.firestoreUtils;
-            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            if (window.isLocalMode) { saveLocalFallback(); renderSupps(); }
+            else {
+                const { doc, setDoc } = window.firestoreUtils;
+                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            }
         }
 
         async function deleteSupp(idx) {
             appState.supps.splice(idx, 1);
-            const { doc, setDoc } = window.firestoreUtils;
-            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            if (window.isLocalMode) { saveLocalFallback(); renderSupps(); }
+            else {
+                const { doc, setDoc } = window.firestoreUtils;
+                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            }
         }
 
         async function apiCall(prompt, system) {
@@ -529,8 +602,8 @@
         async function generateRecipe(category) {
             const meal = appState.selectedMeals[category];
             showModal("Syncing...", "<div class='animate-pulse text-blue-400 text-center py-20 font-black'>AI BIO-CHEF DRAFTING ✨...</div>");
-            const sys = "High-performance Chef for a 6'3 father. Use 'Modular Bulk' logic. Explain how to prep the meal for high protein (45g+) for dad and delicious for family. Total Macros included.";
-            const res = await apiCall(`Recipe for "${meal.name}". Blueprint: ${meal.blueprint}. Macros: ${meal.macros}.`, sys);
+            const sys = "High-performance Chef for a 6'3 father. Use 'Modular Bulk' logic. Explain clearly how to prep the meal so it hits 45g+ protein for the dad while being delicious for kids. Include total macros.";
+            const res = await apiCall(`Provide a specific, family-modular recipe for "${meal.name}". Blueprint: ${meal.blueprint}. Macros: ${meal.macros}.`, sys);
             if (res) showModal(meal.name, `<div class="recipe-container text-slate-100">${res.replace(/\n/g, '<br>')}</div>`);
         }
 
@@ -562,13 +635,16 @@
 
         async function toggleShopItem(idx) {
             appState.shopping[idx].checked = !appState.shopping[idx].checked;
-            const { doc, setDoc } = window.firestoreUtils;
-            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'shopping'), { list: appState.shopping });
+            if (window.isLocalMode) saveLocalFallback();
+            else {
+                const { doc, setDoc } = window.firestoreUtils;
+                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'shopping'), { list: appState.shopping });
+            }
             renderShoppingList();
         }
 
         function renderShoppingList() {
-            let html = `<div class="space-y-6 pb-20">`;
+            let html = `<div class="space-y-6 pb-20 text-slate-100">`;
             const cats = [...new Set(appState.shopping.map(i => i.cat))];
             cats.forEach(cat => {
                 html += `<div><h4 class="text-blue-400 font-black text-xs uppercase mb-3 border-b border-slate-800 pb-1">${cat}</h4>`;
@@ -576,7 +652,7 @@
                     const idx = appState.shopping.findIndex(orig => orig.name === item.name && orig.cat === cat);
                     html += `<div onclick="toggleShopItem(${idx})" class="flex items-center gap-3 p-3 bg-slate-800/40 rounded-xl border border-slate-700/50 mb-2 cursor-pointer">
                         <i data-lucide="${item.checked ? 'check-square' : 'square'}" class="w-5 h-5 ${item.checked ? 'text-blue-500' : 'text-slate-600'}"></i>
-                        <span class="text-sm ${item.checked ? 'line-through text-slate-600' : ''} font-bold text-slate-100">${item.name}</span>
+                        <span class="text-sm ${item.checked ? 'line-through text-slate-600' : ''} font-bold">${item.name}</span>
                     </div>`;
                 });
                 html += `</div>`;
@@ -591,8 +667,14 @@
             const neck = parseFloat(document.getElementById('m-neck').value);
             if (!weight || !waist || !neck) return;
             const bf = (86.010 * Math.log10(waist - neck) - 70.041 * Math.log10(HEIGHT_INCHES) + 36.76).toFixed(1);
-            const { collection, addDoc } = window.firestoreUtils;
-            await addDoc(collection(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'metrics'), { weight, waist, neck, bf, timestamp: Date.now(), dateLabel: new Date().toLocaleDateString() });
+            if (window.isLocalMode) {
+                appState.metrics.unshift({ weight, waist, neck, bf, timestamp: Date.now(), dateLabel: new Date().toLocaleDateString() });
+                saveLocalFallback();
+                renderLatestMetrics();
+            } else {
+                const { collection, addDoc } = window.firestoreUtils;
+                await addDoc(collection(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'metrics'), { weight, waist, neck, bf, timestamp: Date.now(), dateLabel: new Date().toLocaleDateString() });
+            }
             closeModal();
         }
 
@@ -630,14 +712,14 @@
             const plan = BEAST_SCHEDULE.find(s => s.day === dayName);
             if (plan) {
                 badge.innerText = plan.type;
-                container.innerHTML = plan.tasks.map(t => `<div class="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50 flex gap-2 text-slate-100"><div class="w-1 h-1 bg-blue-500 rounded-full mt-2"></div><span class="text-[11px] font-bold uppercase tracking-tighter">${t}</span></div>`).join('');
+                container.innerHTML = plan.tasks.map(t => `<div class="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50 flex gap-2 text-slate-100 text-left"><div class="w-1 h-1 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div><span class="text-[11px] font-bold uppercase tracking-tighter">${t}</span></div>`).join('');
             }
         }
 
         function showTab(type) {
             if (type === 'progress') {
                 showModal("Analytics Dashboard", `<div class="space-y-6">
-                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-slate-100">
+                    <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-slate-100 text-left">
                         <h4 class="text-xs font-black uppercase text-blue-400 mb-4">New Entry</h4>
                         <div class="grid grid-cols-3 gap-3 mb-4">
                             <input type="number" id="m-weight" placeholder="lbs" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white">
@@ -646,19 +728,19 @@
                         </div>
                         <button onclick="logMetrics()" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs">Save Metrics</button>
                     </div>
-                    <div class="space-y-2 text-slate-100">${appState.metrics.map(m => `<div class="flex justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50"><div><p class="text-[10px] uppercase font-bold text-slate-400">${m.dateLabel}</p><p class="text-sm font-bold">${m.weight} lbs</p></div><div class="text-right text-blue-400 font-black">${m.bf}%</div></div>`).join('')}</div>
+                    <div class="space-y-2 text-slate-100">${appState.metrics.map(m => `<div class="flex justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50"><div><p class="text-[10px] uppercase font-bold text-slate-400">${m.dateLabel}</p><p class="text-sm font-bold">${m.weight} lbs</p></div><div class="text-right"><p class="text-[10px] uppercase font-bold text-slate-500">BF%</p><p class="text-sm text-blue-400 font-black">${m.bf}%</p></div></div>`).join('')}</div>
                 </div>`);
             } else if (type === 'shopping') {
                 showModal("Supply List", ""); renderShoppingList();
             } else if (type === 'workouts') {
-                showModal("Tall Cues", `<div class="space-y-4 text-slate-100"><div class="p-4 bg-slate-800 rounded-xl border border-slate-700"><h4>FLOOR PRESS</h4><p class="text-sm">Stop elbows at floor. Save shoulders.</p></div><div class="p-4 bg-slate-800 rounded-xl border border-slate-700"><h4>HACK SQUAT</h4><p class="text-sm">Feet low. Upright torso. Max quads.</p></div></div>`);
+                showModal("Tall Cues", `<div class="space-y-4 text-slate-100 text-left"><div class="p-4 bg-slate-800 rounded-xl border border-slate-700"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">FLOOR PRESS</h4><p class="text-xs text-slate-300">Stop elbows at floor to protect long shoulder capsules while overloading triceps.</p></div><div class="p-4 bg-slate-800 rounded-xl border border-slate-700"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">HACK SQUAT</h4><p class="text-xs text-slate-300">Feet low. Upright torso. Forces knee flexion to grow quads without lower back fatigue.</p></div></div>`);
             } else if (type === 'med') {
-                showModal("MED Routine", `<ul class="space-y-3 text-slate-100"><li class="flex justify-between p-3 bg-slate-800 rounded-xl"><span>Goblet Squat</span><span class="font-black">3x15</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl"><span>Pushups</span><span class="font-black text-blue-400">3xMAX</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl"><span>DB Row</span><span class="font-black">3x15</span></li></ul>`);
+                showModal("MED Routine", `<ul class="space-y-3 text-slate-100 text-left"><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Goblet Squat</span><span class="font-black">3x15</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Pushups</span><span class="font-black text-blue-400">3xMAX</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>DB Row</span><span class="font-black">3x15</span></li></ul>`);
             } else if (type === 'roadmap') {
                 showModal("4-Year Periodization", `
-                    <div class="space-y-4 text-slate-100 pb-20">
-                        <div class="p-4 bg-blue-600/20 border border-blue-400 rounded-xl"><h4 class="font-black text-xs uppercase text-blue-400 mb-1">Year 1: Foundation (Current)</h4><p class="text-[11px] text-slate-300">Goal: Drop BF to 15%. Build connective tissue. Master biomechanical cues for 6'3 frame.</p></div>
-                        <div class="p-4 bg-slate-800 rounded-xl opacity-60"><h4 class="font-black text-xs uppercase mb-1">Year 2: Beast Hypertrophy</h4><p class="text-[11px] text-slate-400">Goal: Max muscle accretion. Transition to PPL split. Increase volume.</p></div>
+                    <div class="space-y-4 text-slate-100 pb-20 text-left">
+                        <div class="p-4 bg-blue-600/20 border border-blue-400 rounded-xl"><h4 class="font-black text-xs uppercase text-blue-400 mb-1">Year 1: Foundation (Current)</h4><p class="text-[11px] text-slate-300">Goal: Drop BF to 15%. Master biomechanical cues for 6'3 frame.</p></div>
+                        <div class="p-4 bg-slate-800 rounded-xl opacity-60"><h4 class="font-black text-xs uppercase mb-1">Year 2: Beast Hypertrophy</h4><p class="text-[11px] text-slate-400">Goal: Max muscle accretion. Transition to PPL split.</p></div>
                         <div class="p-4 bg-slate-800 rounded-xl opacity-40"><h4 class="font-black text-xs uppercase mb-1">Year 3: Strength & Density</h4><p class="text-[11px] text-slate-400">Goal: Hardness and 1RM power. Jim Wendler 5/3/1 blocks.</p></div>
                         <div class="p-4 bg-slate-800 rounded-xl opacity-20"><h4 class="font-black text-xs uppercase mb-1">Year 4: 8-Pack Refinement</h4><p class="text-[11px] text-slate-400">Goal: Absolute beast specimen status. Elite vascularity.</p></div>
                     </div>`);
@@ -667,17 +749,30 @@
 
         async function saveSettings() {
             const val = document.getElementById('api-key-input').value;
-            await updateProfile({ apiKey: val });
+            const fbConfig = document.getElementById('firebase-config-input').value;
+            appState.apiKey = val;
+            localStorage.setItem('beast_api_key', val);
+            if(fbConfig) localStorage.setItem('beast_custom_firebase_config', fbConfig);
+            if (!window.isLocalMode) await updateProfile({ apiKey: val });
             toggleSettings();
+            location.reload(); // Reload to apply Firebase config if added
         }
 
-        function toggleSettings() { document.getElementById('settings-modal').classList.toggle('hidden'); }
+        function toggleSettings() { 
+            document.getElementById('settings-modal').classList.toggle('hidden');
+            if(!document.getElementById('settings-modal').classList.contains('hidden')) {
+                document.getElementById('firebase-config-input').value = localStorage.getItem('beast_custom_firebase_config') || '';
+            }
+        }
         function toggleSuppModal() { document.getElementById('supp-modal').classList.toggle('hidden'); }
         function closeModal() { document.getElementById('content-modal').classList.add('hidden'); }
         function showModal(title, body) {
-            document.getElementById('modal-title').innerText = title;
-            document.getElementById('modal-body').innerHTML = body;
-            document.getElementById('content-modal').classList.remove('hidden');
+            const titleEl = document.getElementById('modal-title');
+            const bodyEl = document.getElementById('modal-body');
+            const modal = document.getElementById('content-modal');
+            if (titleEl) titleEl.innerText = title;
+            if (bodyEl) bodyEl.innerHTML = body;
+            if (modal) modal.classList.remove('hidden');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
     </script>
