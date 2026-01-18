@@ -12,7 +12,6 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Defensive check for GitHub/External Hosting environment
         let firebaseConfig = null;
         try {
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -21,12 +20,12 @@
                 const savedConfig = localStorage.getItem('beast_custom_firebase_config');
                 if (savedConfig) firebaseConfig = JSON.parse(savedConfig);
             }
-        } catch (e) {
-            console.warn("Firebase configuration not detected. App will run in local mode.");
-        }
+        } catch (e) { console.warn("Firebase configuration check bypassed."); }
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'beast-hub-v1';
         window.appId = appId;
+        
+        // CRITICAL: Expose Firestore utilities globally for the main logic script
         window.firestoreUtils = { doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc };
 
         if (firebaseConfig) {
@@ -51,44 +50,41 @@
                     window.dispatchEvent(new CustomEvent('auth-ready'));
                 }
             });
-
             initAuth();
         } else {
             window.isLocalMode = true;
-            setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('auth-ready'));
-            }, 100);
+            setTimeout(() => { window.dispatchEvent(new CustomEvent('auth-ready')); }, 100);
         }
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Oswald:wght@700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; padding: 0; }
         .card { background: #1e293b; border-radius: 1.25rem; border: 1px solid #334155; }
         .accent-gradient { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); }
+        .glass { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         .missed-day { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
-        .completed-day { background: #2563eb; color: white; }
+        .completed-day { background: #2563eb; color: white; border: 1px solid #3b82f6; }
         .pending-day { background: #334155; color: #94a3b8; }
         .rule-broken { border: 2px solid #ef4444; animation: pulse-red 2s infinite; }
         @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
         .beast-font { font-family: 'Oswald', sans-serif; text-transform: uppercase; }
         input[type="number"]::-webkit-inner-spin-button { display: none; }
-        .recipe-container h3 { color: #60a5fa; font-weight: 800; margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.9rem; }
-        .recipe-container p { margin-bottom: 0.75rem; font-size: 0.95rem; }
-        .planner-day:hover { background: #334155; }
+        .recipe-container h3 { color: #60a5fa; font-weight: 800; margin-top: 1.5rem; margin-bottom: 0.5rem; text-transform: uppercase; font-size: 0.85rem; }
         .beast-glow { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
+        .nav-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s; }
+        .nav-btn:active { transform: scale(0.9); }
     </style>
 </head>
 <body class="min-h-screen pb-32 text-slate-100 text-left">
 
     <header class="sticky top-0 z-50 glass border-b border-slate-700 px-4 py-4 mb-6">
         <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <div>
-                <div class="flex items-center gap-2 text-left">
+            <div class="text-left">
+                <div class="flex items-center gap-2">
                     <p id="day-of-week-banner" class="text-blue-400 font-black text-lg uppercase tracking-widest leading-none beast-font">BEAST HUB</p>
-                    <span class="bg-blue-600/20 text-blue-400 text-[10px] font-black px-2 py-0.5 rounded border border-blue-500/30 uppercase">Year 1: Foundation</span>
+                    <span id="roadmap-badge" class="bg-blue-600/20 text-blue-400 text-[10px] font-black px-2 py-0.5 rounded border border-blue-500/30 uppercase tracking-tighter cursor-pointer" onclick="showTab('roadmap')">Year 1: Foundation</span>
                 </div>
-                <p id="current-date-display" class="text-xs text-slate-400 font-medium text-left"></p>
+                <p id="current-date-display" class="text-xs text-slate-400 font-medium mt-1"></p>
             </div>
             <div class="flex items-center gap-3">
                 <div id="sync-indicator" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden"></div>
@@ -103,7 +99,7 @@
 
         <!-- Momentum Section -->
         <section id="habit-section" class="card p-6 shadow-xl relative overflow-hidden">
-            <div class="flex items-center justify-between mb-4 text-left">
+            <div class="flex items-center justify-between mb-4">
                 <h2 class="text-sm font-bold flex items-center gap-2 uppercase tracking-widest text-slate-400 beast-font">
                     <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i> Momentum
                 </h2>
@@ -116,55 +112,58 @@
             <p id="rule-status" class="text-[10px] mt-3 text-center text-slate-500 italic uppercase tracking-wider">Protect the 2-Day Rule</p>
         </section>
 
-        <!-- Metrics Overview -->
-        <section class="card p-6 border-blue-500/30 text-left">
+        <!-- Metrics Dashboard -->
+        <section class="card p-6 border-blue-500/20 text-left">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400 beast-font text-left">Body Composition</h2>
-                <button onclick="showTab('progress')" class="text-xs text-blue-400 font-bold hover:underline">Log Analytics</button>
+                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400 beast-font">Body Analytics</h2>
+                <button onclick="showTab('progress')" class="text-xs text-blue-400 font-bold hover:underline">Full Logs</button>
             </div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30">
-                    <p class="text-[10px] text-slate-500 uppercase font-black text-left">Weight</p>
-                    <p class="text-xl font-bold text-slate-100" id="latest-weight">-- lbs</p>
+                    <p class="text-[10px] text-slate-500 uppercase font-black">Weight</p>
+                    <p class="text-xl font-bold" id="latest-weight">-- lbs</p>
                 </div>
                 <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30">
-                    <p class="text-[10px] text-slate-500 uppercase font-black text-left">Body Fat</p>
+                    <p class="text-[10px] text-slate-500 uppercase font-black text-blue-400">Body Fat</p>
                     <p class="text-xl font-bold text-blue-400" id="latest-bf">-- %</p>
                 </div>
                 <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30 text-center">
-                    <p class="text-[10px] text-slate-500 uppercase font-black">200g Protein</p>
-                    <p class="text-xl font-bold text-slate-100" id="protein-total">0g</p>
+                    <p class="text-[10px] text-slate-500 uppercase font-black">Daily Protein</p>
+                    <p class="text-xl font-bold text-slate-100" id="protein-total">0g / 200g</p>
                 </div>
-                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30 text-left">
-                    <p class="text-[10px] text-slate-500 uppercase font-black text-left">Goal: 12%</p>
+                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700/30">
+                    <p class="text-[10px] text-slate-500 uppercase font-black">Goal: 12%</p>
                     <div class="w-full bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
                         <div id="bf-progress-bar" class="bg-blue-500 h-full rounded-full transition-all duration-1000" style="width: 0%"></div>
                     </div>
                 </div>
             </div>
             <div class="flex gap-2 mt-4">
-                <button onclick="addProtein()" class="flex-1 bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-[10px] font-black uppercase border border-slate-700 text-slate-100 tracking-widest">+ 25g Protein</button>
-                <button onclick="showTab('progress')" class="flex-1 accent-gradient py-2 rounded-lg text-[10px] font-black uppercase shadow-lg text-slate-100 tracking-widest">Update Metrics</button>
+                <div class="flex flex-1 gap-1">
+                    <button onclick="addProtein()" class="flex-grow bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-[10px] font-black uppercase border border-slate-700 text-slate-100 tracking-widest">+ 25g</button>
+                    <button onclick="subProtein()" class="px-4 bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-[10px] font-black uppercase border border-slate-700 text-slate-400">-</button>
+                </div>
+                <button onclick="showTab('progress')" class="flex-1 accent-gradient py-3 rounded-xl text-[10px] font-black uppercase shadow-lg text-white tracking-widest">Log Metrics / Edit</button>
             </div>
         </section>
 
-        <!-- Dashboard Split -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+        <!-- Blueprint / Protocol Split -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <section class="card p-6 flex flex-col text-left">
-                <div class="flex justify-between items-start mb-4 text-left">
-                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-left"><i data-lucide="dumbbell" class="text-blue-500"></i> Today's Blueprint</h2>
-                    <span id="day-type-badge" class="text-[10px] bg-slate-700 px-2 py-1 rounded uppercase font-bold text-slate-300"></span>
+                <div class="flex justify-between items-start mb-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-slate-100"><i data-lucide="dumbbell" class="text-blue-500"></i> Today's Blueprint</h2>
+                    <span id="day-badge" class="text-[10px] bg-slate-700 px-2 py-1 rounded uppercase font-bold text-slate-300"></span>
                 </div>
                 <div id="today-tasks" class="space-y-3 mb-4 flex-grow text-left"></div>
                 <button onclick="showTab('workouts')" class="w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center gap-2 text-slate-100">
-                    <i data-lucide="info" class="w-3 h-3"></i> View Tall Lifter Cues
+                    <i data-lucide="info" class="w-3 h-3 text-slate-100"></i> Tall Lifter Cues
                 </button>
             </section>
 
-            <section class="card p-6 text-left">
+            <section class="card p-6">
                 <div class="flex justify-between items-center mb-4 text-left">
-                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-left"><i data-lucide="pill" class="text-emerald-500"></i> Protocol</h2>
-                    <button onclick="toggleSuppModal()" class="text-xs text-blue-400 font-bold hover:underline">+ Manage</button>
+                    <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-slate-100 text-left"><i data-lucide="pill" class="text-emerald-500"></i> Protocol</h2>
+                    <button onclick="toggleSuppModal()" class="text-[10px] text-blue-400 font-black uppercase hover:underline">+ Manage</button>
                 </div>
                 <div id="supp-list" class="space-y-2"></div>
             </section>
@@ -172,16 +171,16 @@
 
         <!-- Meals -->
         <section class="card p-6 text-slate-100 text-left">
-            <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-left mb-6"><i data-lucide="utensils" class="text-orange-500"></i> Nutrition Hub</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="meal-grid"></div>
+            <h2 class="text-lg font-bold flex items-center gap-2 beast-font text-left mb-6 text-slate-100"><i data-lucide="utensils" class="text-orange-500"></i> Nutrition Hub</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-left" id="meal-grid"></div>
         </section>
 
         <!-- Stats -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
             <section class="card p-6 flex justify-between items-center text-slate-100">
                 <div class="flex items-center gap-3 text-left">
-                    <div class="p-3 bg-red-500/10 rounded-xl border border-red-500/20"><i data-lucide="glass-water" class="text-red-500"></i></div>
-                    <div><h3 class="font-bold text-sm beast-font">Weekly Alcohol</h3><p class="text-xs text-slate-500">Cap: 3 Drinks</p></div>
+                    <div class="p-3 bg-red-500/10 rounded-xl border border-red-500/20 text-left"><i data-lucide="glass-water" class="text-red-500"></i></div>
+                    <div class="text-left"><h3 class="font-bold text-sm beast-font text-left">Weekly Alcohol</h3><p class="text-[10px] text-slate-500 uppercase font-black text-left">Limit: 3</p></div>
                 </div>
                 <div class="flex items-center gap-4">
                     <p class="text-2xl font-black text-red-400" id="alcohol-count">0/3</p>
@@ -191,8 +190,8 @@
 
             <section class="card p-6 flex justify-between items-center text-slate-100">
                 <div class="flex items-center gap-3 text-left">
-                    <div class="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20"><i data-lucide="droplets" class="text-blue-500"></i></div>
-                    <div><h3 class="font-bold text-sm beast-font">Hydration</h3><p class="text-xs text-slate-500">Target: 4L</p></div>
+                    <div class="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20 text-left"><i data-lucide="droplets" class="text-blue-500"></i></div>
+                    <div class="text-left"><h3 class="font-bold text-sm beast-font text-left">Hydration</h3><p class="text-[10px] text-slate-500 uppercase font-black text-left">Target: 4L</p></div>
                 </div>
                 <div class="flex items-center gap-4 text-left">
                     <p class="text-2xl font-black text-red-400 text-blue-400" id="water-count">0.0L</p>
@@ -200,72 +199,58 @@
                 </div>
             </section>
         </div>
-
     </main>
 
-    <!-- Navigation -->
-    <div class="fixed bottom-6 left-4 right-4 h-20 glass rounded-3xl border border-slate-700 flex items-center justify-between px-2 shadow-2xl z-40 text-slate-100">
-        <button onclick="getMotivation()" class="flex flex-col items-center gap-1 text-yellow-500 flex-1 min-w-0">
+    <!-- Balanced Bottom Navigation -->
+    <nav class="fixed bottom-6 left-4 right-4 h-20 glass rounded-3xl border border-slate-700 flex items-center justify-between px-2 shadow-2xl z-40 text-slate-100">
+        <button onclick="getMotivation()" class="nav-btn text-yellow-500 flex-1 min-w-0">
             <i data-lucide="zap" class="w-5 h-5 text-yellow-500"></i>
-            <span class="text-[8px] font-bold uppercase tracking-tighter">Focus ✨</span>
+            <span class="text-[8px] font-bold uppercase tracking-tighter text-slate-300">Focus ✨</span>
         </button>
-        <button onclick="showTab('shopping')" class="flex flex-col items-center gap-1 text-purple-400 flex-1 min-w-0">
+        <button onclick="showTab('shopping')" class="nav-btn text-purple-400 flex-1 min-w-0">
             <i data-lucide="shopping-cart" class="w-5 h-5 text-purple-400"></i>
-            <span class="text-[8px] font-bold uppercase tracking-tighter">Shop</span>
+            <span class="text-[8px] font-bold uppercase tracking-tighter text-slate-300">Shop</span>
         </button>
-        <button onclick="generateDraftSelector()" class="accent-gradient h-14 px-4 rounded-2xl font-black text-[10px] shadow-lg active:scale-95 transition tracking-widest uppercase flex-1 max-w-[100px] mx-1 text-slate-100 beast-glow">
+        <button onclick="generateDraftSelector()" class="accent-gradient h-14 px-4 rounded-2xl font-black text-[10px] shadow-lg active:scale-95 transition tracking-widest uppercase flex-1 max-w-[100px] mx-1 text-white beast-glow">
             Build ✨
         </button>
-        <button onclick="showTab('planner')" class="flex flex-col items-center gap-1 text-emerald-400 flex-1 min-w-0">
+        <button onclick="showTab('planner')" class="nav-btn text-emerald-400 flex-1 min-w-0">
             <i data-lucide="calendar" class="w-5 h-5 text-emerald-400"></i>
-            <span class="text-[8px] font-bold uppercase tracking-tighter">Plan</span>
+            <span class="text-[8px] font-bold uppercase tracking-tighter text-slate-300">Plan</span>
         </button>
-        <button onclick="showTab('progress')" class="flex flex-col items-center gap-1 text-blue-400 flex-1 min-w-0">
+        <button onclick="showTab('progress')" class="nav-btn text-blue-400 flex-1 min-w-0">
             <i data-lucide="bar-chart-2" class="w-5 h-5 text-blue-400"></i>
-            <span class="text-[8px] font-bold uppercase tracking-tighter">Metrics</span>
+            <span class="text-[8px] font-bold uppercase tracking-tighter text-slate-300">Metrics</span>
         </button>
-        <button onclick="showTab('med')" class="flex flex-col items-center gap-1 text-orange-400 flex-1 min-w-0">
+        <button onclick="showTab('med')" class="nav-btn text-orange-400 flex-1 min-w-0">
             <i data-lucide="timer" class="w-5 h-5 text-orange-400"></i>
-            <span class="text-[8px] font-bold uppercase tracking-tighter">MED</span>
+            <span class="text-[8px] font-bold uppercase tracking-tighter text-slate-300">MED</span>
         </button>
-    </div>
+    </nav>
 
-    <!-- Modals -->
+    <!-- Settings Modal -->
     <div id="settings-modal" class="fixed inset-0 bg-black/80 hidden z-[60] flex items-center justify-center p-4">
         <div class="card w-full max-w-sm p-6 text-slate-100 text-left">
-            <h3 class="text-xl font-bold mb-4 text-blue-400 uppercase beast-font">System Config</h3>
-            <label class="block text-sm text-slate-400 mb-2">Google AI API Key</label>
-            <input type="password" id="api-key-input" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 mb-4 text-white" placeholder="AI Key for Recipes...">
-            <div class="mb-4">
+            <h3 class="text-lg font-black mb-4 text-blue-400 uppercase beast-font text-left">System Config</h3>
+            <label class="block text-[10px] uppercase font-black text-slate-500 mb-1 text-left">Google AI API Key</label>
+            <input type="password" id="api-key-input" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 mb-4 text-white text-sm text-left" placeholder="Paste Gemini Key...">
+            <div class="mb-4 text-left">
                 <label class="block text-[10px] text-slate-500 uppercase font-black mb-1 text-left">Firebase Config (JSON)</label>
-                <textarea id="firebase-config-input" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-[10px] text-emerald-400 font-mono" placeholder='{"apiKey": "...", "authDomain": "..."}'></textarea>
-                <p class="text-[9px] text-slate-600 mt-1 italic text-left">Optional cloud storage setup for GitHub hosting.</p>
+                <textarea id="firebase-config-input" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-[10px] text-emerald-400 font-mono text-left" placeholder='{"apiKey": "...", ...}'></textarea>
             </div>
             <div class="flex gap-3">
-                <button onclick="saveSettings()" class="flex-1 bg-blue-600 p-3 rounded-xl font-bold uppercase text-xs tracking-widest text-slate-100">Save</button>
-                <button onclick="toggleSettings()" class="flex-1 bg-slate-700 p-3 rounded-xl uppercase text-xs tracking-widest text-slate-100">Close</button>
+                <button onclick="saveSettings()" class="flex-1 bg-blue-600 p-3 rounded-xl font-bold uppercase text-xs tracking-widest text-white shadow-lg">Save</button>
+                <button onclick="toggleSettings()" class="flex-1 bg-slate-700 p-3 rounded-xl uppercase text-xs tracking-widest text-slate-300">Close</button>
             </div>
-            <p id="mode-status" class="text-[10px] text-slate-500 mt-4 text-center font-black uppercase"></p>
+            <p id="mode-status" class="text-[9px] text-slate-500 mt-4 text-center font-black uppercase tracking-widest"></p>
         </div>
     </div>
 
-    <div id="supp-modal" class="fixed inset-0 bg-black/80 hidden z-[60] flex items-center justify-center p-4 text-slate-100 text-left">
-        <div class="card w-full max-w-sm p-6">
-            <h3 class="text-xl font-bold mb-4 text-emerald-400 uppercase beast-font text-left">Manage Stack</h3>
-            <div class="space-y-2 mb-4 max-h-60 overflow-y-auto pr-2" id="supp-manage-list"></div>
-            <div class="space-y-2 border-t border-slate-700 pt-4">
-                <input type="text" id="new-supp-name" placeholder="Name" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-                <input type="text" id="new-supp-time" placeholder="Dose/Time" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-white">
-                <button onclick="addSupp()" class="w-full bg-emerald-600 py-2 rounded-lg font-bold text-sm shadow-lg tracking-widest text-slate-100">+ ADD TO STACK</button>
-            </div>
-            <button onclick="toggleSuppModal()" class="w-full mt-4 bg-slate-700 py-2 rounded-lg text-sm text-slate-100">Close</button>
-        </div>
-    </div>
-
-    <div id="content-modal" class="fixed inset-0 bg-black/95 hidden z-[70] overflow-y-auto p-4 text-slate-100 text-left">
-        <div class="max-w-2xl mx-auto py-10">
-            <div class="flex justify-between items-center mb-6 text-left">
-                <h2 id="modal-title" class="text-2xl font-bold text-blue-400 uppercase beast-font"></h2>
+    <!-- Content Modals -->
+    <div id="content-modal" class="fixed inset-0 bg-black/95 hidden z-[70] overflow-y-auto p-4 text-slate-100">
+        <div class="max-w-2xl mx-auto py-10 text-left">
+            <div class="flex justify-between items-center mb-6">
+                <h2 id="modal-title" class="text-xl font-black text-blue-400 uppercase beast-font text-left"></h2>
                 <button onclick="closeModal()" class="text-slate-400 p-2 hover:bg-slate-800 rounded-full transition text-left"><i data-lucide="x" class="w-8 h-8 text-slate-100"></i></button>
             </div>
             <div id="modal-body" class="text-slate-300 leading-relaxed prose prose-invert max-w-none text-left"></div>
@@ -273,6 +258,28 @@
     </div>
 
     <script>
+        // --- GLOBAL UI HELPERS ---
+        function showModal(title, body) {
+            const te = document.getElementById('modal-title'), be = document.getElementById('modal-body'), m = document.getElementById('content-modal');
+            if(te) te.innerText = title; if(be) be.innerHTML = body; if(m) m.classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeModal() { document.getElementById('content-modal')?.classList.add('hidden'); }
+
+        function toggleSettings() { 
+            const sm = document.getElementById('settings-modal');
+            if(sm) {
+                sm.classList.toggle('hidden');
+                if(!sm.classList.contains('hidden')) {
+                    document.getElementById('api-key-input').value = appState.apiKey || '';
+                    document.getElementById('firebase-config-input').value = localStorage.getItem('beast_custom_firebase_config') || '';
+                }
+            }
+        }
+        function toggleSuppModal() { document.getElementById('supp-modal')?.classList.toggle('hidden'); }
+
+        // --- CONSTANTS & LIBRARIES ---
         const BEAST_SCHEDULE = [
             { day: 'Sunday', type: 'Prep & Rest', tasks: ['Batch Prep 5x Oats', 'Cook 2lbs Turkey Chili', 'Weekly Plan Audit'] },
             { day: 'Monday', type: 'Lower A (Quads)', tasks: ['Hack Squat: 3x8-10', 'Walking Lunges: 3x12', 'Leg Extension: 3x15', 'Leg Raise: 3x15'] },
@@ -284,176 +291,99 @@
         ];
 
         const MEAL_LIBRARY = {
-            breakfast: [
-                { id: 'b1', name: 'Beast Oats', macros: '450 Cal | 35g P', blueprint: '1/2 cup Rolled Oats, 1 scoop Whey, 1 tbsp Chia, 3/4 cup Almond Milk, 1/2 cup Frozen Berries.' },
-                { id: 'b2', name: 'Steak & Egg Scramble', macros: '550 Cal | 45g P', blueprint: '4oz Lean Sirloin, 2 Eggs, 1/2 cup Egg Whites, Spinach, Bell Peppers.' },
-                { id: 'b3', name: 'Greek Yogurt Power Bowl', macros: '400 Cal | 40g P', blueprint: '1 cup 2% Greek Yogurt, 1/2 scoop Whey, 1/4 cup Almonds, Mixed Berries.' }
-            ],
-            lunch: [
-                { id: 'l1', name: 'Adult Lunchable', macros: '550 Cal | 50g P', blueprint: '8oz Chicken, 1 bag Steamfresh Veggies, 1/2 Avocado.' },
-                { id: 'l2', name: 'Tuna Greek Salad', macros: '520 Cal | 55g P', blueprint: '2 cans Tuna (in water), 1/2 cup Greek Yogurt (sub mayo), Celery, Greens, Olives.' },
-                { id: 'l3', name: 'Turkey Hummus Wrap', macros: '580 Cal | 48g P', blueprint: '6oz Sliced Turkey Breast, 2 tbsp Hummus, Spinach, Whole Wheat Wrap.' }
-            ],
-            dinner: [
-                { id: 'd1', name: 'Modular Turkey Chili', macros: '700 Cal | 60g P', blueprint: '2lbs Lean Turkey, 2 cans Beans, Tomatoes, Zucchini, Spices.' },
-                { id: 'd2', name: 'Slow Cooker Salsa Chicken', macros: '650 Cal | 58g P', blueprint: '3lbs Chicken Thighs/Breast, 1 jar Salsa, Taco Seasoning, Black Beans.' },
-                { id: 'd3', name: 'Sheet Pan Sausage & Veg', macros: '680 Cal | 55g P', blueprint: 'Chicken Sausage, Broccoli, Sweet Potato, Bell Peppers, Olive Oil.' }
-            ]
+            breakfast: [{ id:'b1', name:'Beast Oats', macros:'450 Cal | 35g P', blueprint:'1/2 cup Rolled Oats, 1 scoop Whey, 1 tbsp Chia, 3/4 cup Almond Milk, 1/2 cup Frozen Berries.' },{ id:'b2', name:'Steak & Egg Scramble', macros:'550 Cal | 45g P', blueprint:'4oz Lean Sirloin, 2 Eggs, 1/2 cup Egg Whites, Spinach, Bell Peppers.' }],
+            lunch: [{ id:'l1', name:'Adult Lunchable', macros:'550 Cal | 50g P', blueprint:'8oz Chicken, 1 bag Steamfresh Veggies, 1/2 Avocado.' },{ id:'l2', name:'Tuna Greek Salad', macros:'520 Cal | 55g P', blueprint:'2 cans Tuna, 1/2 cup Greek Yogurt, Celery, Greens, Olives.' }],
+            dinner: [{ id:'d1', name:'Modular Turkey Chili', macros:'700 Cal | 60g P', blueprint:'2lbs Lean Turkey, 2 cans Beans, Tomatoes, Zucchini, Spices.' },{ id:'d2', name:'Slow Cooker Salsa Chicken', macros:'650 Cal | 58g P', blueprint:'3lbs Chicken, 1 jar Salsa, Taco Seasoning, Black Beans.' }]
         };
+        for(let i=3; i<=10; i++) {
+            MEAL_LIBRARY.breakfast.push({ id:'b'+i, name:'Protein Option #'+i, macros:'450 Cal | 40g P', blueprint:'Performance breakfast base.' });
+            MEAL_LIBRARY.lunch.push({ id:'l'+i, name:'Performance Lunch #'+i, macros:'550 Cal | 50g P', blueprint:'Clean meat and veggie lunch.' });
+            MEAL_LIBRARY.dinner.push({ id:'d'+i, name:'Modular Dinner #'+i, macros:'700 Cal | 60g P', blueprint:'Family modular dinner base.' });
+        }
 
         const DEFAULT_SUPPS = [
             { name: 'Creatine Monohydrate', time: '5g: Morning/Post-Lift', checked: false },
             { name: 'Vitamin D3 + K2', time: '2k-5k IU: Morning', checked: false },
             { name: 'Omega-3 Fish Oil', time: '2-3g: With Meals', checked: false },
-            { name: 'Magnesium Glycinate', time: '200-400mg: 1hr Bed', checked: false },
-            { name: 'Ashwagandha (KSM-66)', time: '300-600mg: Stress/Daily', checked: false }
+            { name: 'Magnesium Glycinate', time: '200-400mg: 1hr Bed', checked: false }
         ];
 
+        // --- STATE ---
         let appState = {
             habits: JSON.parse(localStorage.getItem('beast_local_habits')) || {},
             supps: JSON.parse(localStorage.getItem('beast_local_supps')) || [...DEFAULT_SUPPS],
-            shopping: JSON.parse(localStorage.getItem('beast_local_shop')) || [],
             metrics: JSON.parse(localStorage.getItem('beast_local_metrics')) || [],
             planner: JSON.parse(localStorage.getItem('beast_local_planner')) || {},
             drinks: parseInt(localStorage.getItem('beast_local_drinks')) || 0,
             water: parseFloat(localStorage.getItem('beast_local_water')) || 0,
             protein: parseInt(localStorage.getItem('beast_local_protein')) || 0,
             apiKey: localStorage.getItem('beast_api_key') || '',
-            selectedMeals: JSON.parse(localStorage.getItem('beast_local_meals')) || {
-                breakfast: MEAL_LIBRARY.breakfast[0], lunch: MEAL_LIBRARY.lunch[0], dinner: MEAL_LIBRARY.dinner[0]
-            }
+            selectedMeals: JSON.parse(localStorage.getItem('beast_local_meals')) || { breakfast: MEAL_LIBRARY.breakfast[0], lunch: MEAL_LIBRARY.lunch[0], dinner: MEAL_LIBRARY.dinner[0] }
         };
 
-        const HEIGHT_INCHES = 75;
-
-        window.addEventListener('auth-ready', () => {
-            document.getElementById('app-container').style.opacity = '1';
-            if (!window.isLocalMode) syncData();
-            renderAll();
-        });
-
-        function renderAll() {
-            updateStatsUI();
-            renderHabits();
-            renderSupps();
-            renderLatestMetrics();
-            renderMeals();
-            renderToday();
-        }
-
-        async function syncData() {
-            const { onSnapshot, collection, doc } = window.firestoreUtils;
-            const user = window.currentUser;
-            if (!user) return;
-            document.getElementById('sync-indicator').classList.remove('hidden');
-
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'settings', 'profile'), (ds) => {
-                if (ds.exists()) {
-                    const d = ds.data();
-                    appState.drinks = d.drinks || 0; appState.water = d.water || 0; 
-                    appState.protein = d.protein || 0; appState.apiKey = d.apiKey || '';
-                    if (d.selectedMeals) appState.selectedMeals = d.selectedMeals;
-                    updateStatsUI();
+        // --- RENDERERS ---
+        function renderLatestMetrics() {
+            const wEl = document.getElementById('latest-weight'), bfEl = document.getElementById('latest-bf'), barEl = document.getElementById('bf-progress-bar');
+            if (appState.metrics.length > 0) {
+                const latest = appState.metrics[0];
+                if (wEl) wEl.innerText = `${latest.weight} lbs`;
+                if (bfEl) bfEl.innerText = `${latest.bf} %`;
+                if (barEl) {
+                    const progress = Math.max(0, Math.min(100, ((25 - latest.bf) / (25 - 12)) * 100));
+                    barEl.style.width = `${progress}%`;
                 }
-            });
-
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'habits'), (ds) => {
-                appState.habits = ds.exists() ? ds.data() : {}; renderHabits();
-            });
-
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'supps'), (ds) => {
-                appState.supps = ds.exists() ? ds.data().list || DEFAULT_SUPPS : DEFAULT_SUPPS; renderSupps();
-            });
-
-            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'planner'), (ds) => {
-                appState.planner = ds.exists() ? ds.data() : {}; renderToday();
-            });
-
-            onSnapshot(collection(window.db, 'artifacts', window.appId, 'users', user.uid, 'metrics'), (snap) => {
-                appState.metrics = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp);
-                renderLatestMetrics();
-            });
-
-            setTimeout(() => document.getElementById('sync-indicator').classList.add('hidden'), 1000);
-        }
-
-        function saveLocalFallback() {
-            if (window.isLocalMode) {
-                localStorage.setItem('beast_local_habits', JSON.stringify(appState.habits));
-                localStorage.setItem('beast_local_supps', JSON.stringify(appState.supps));
-                localStorage.setItem('beast_local_drinks', appState.drinks);
-                localStorage.setItem('beast_local_water', appState.water);
-                localStorage.setItem('beast_local_protein', appState.protein);
-                localStorage.setItem('beast_local_meals', JSON.stringify(appState.selectedMeals));
-                localStorage.setItem('beast_local_planner', JSON.stringify(appState.planner));
-                updateStatsUI();
             }
         }
 
-        function showModal(title, body) {
-            const titleEl = document.getElementById('modal-title');
-            const bodyEl = document.getElementById('modal-body');
-            const modal = document.getElementById('content-modal');
-            if (titleEl) titleEl.innerText = title;
-            if (bodyEl) bodyEl.innerHTML = body;
-            if (modal) modal.classList.remove('hidden');
-            if (typeof lucide !== 'undefined') lucide.createIcons();
+        function renderToday() {
+            const container = document.getElementById('today-tasks'), badge = document.getElementById('day-badge');
+            if (!container || !badge) return;
+            const now = new Date(), dateKey = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
+            const planned = appState.planner[dateKey];
+            let displayType = "", tasks = [];
+            if (planned) {
+                displayType = planned;
+                const match = BEAST_SCHEDULE.find(s => s.type.toLowerCase().includes(planned.toLowerCase()));
+                tasks = match ? match.tasks : [`Session: ${planned}`];
+            } else {
+                const day = now.toLocaleDateString('en-US', { weekday: 'long' }), plan = BEAST_SCHEDULE.find(s => s.day === day);
+                if (plan) { displayType = plan.type; tasks = plan.tasks; }
+            }
+            badge.innerText = displayType;
+            container.innerHTML = tasks.map(t => `<div class="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50 flex gap-2 text-slate-100 text-left"><div class="w-1 h-1 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div><span class="text-[11px] font-bold uppercase tracking-tighter text-left">${t}</span></div>`).join('');
         }
-
-        function closeModal() { document.getElementById('content-modal').classList.add('hidden'); }
 
         function renderHabits() {
             const grid = document.getElementById('habit-grid');
-            if (!grid) return;
-            grid.innerHTML = '';
+            if (!grid) return; grid.innerHTML = '';
             const today = new Date(); today.setHours(0,0,0,0);
-            let missedConsecutive = 0; let ruleBroken = false;
+            let misses = 0, ruleBroken = false;
             for (let i = 6; i >= 0; i--) {
                 const d = new Date(today); d.setDate(today.getDate() - i);
-                const key = d.toISOString().split('T')[0];
-                const label = d.toLocaleDateString('en-US', { weekday: 'short' })[0];
-                const checked = appState.habits[key];
-                const isPast = d < today;
-                let cls = checked ? "completed-day border border-blue-400/50" : (isPast ? "missed-day" : "pending-day");
+                const key = d.toISOString().split('T')[0], label = d.toLocaleDateString('en-US', { weekday: 'short' })[0];
+                const checked = appState.habits[key], isPast = d < today;
+                let cls = checked ? "completed-day" : (isPast ? "missed-day text-red-500" : "pending-day");
                 let ico = checked ? "check" : (isPast ? "x" : "circle");
-                if (checked) missedConsecutive = 0; else if (isPast) missedConsecutive++;
-                if (missedConsecutive >= 2) ruleBroken = true;
+                if (checked) misses = 0; else if (isPast) misses++;
+                if (misses >= 2) ruleBroken = true;
                 const btn = document.createElement('button');
                 btn.onclick = () => toggleHabit(key);
                 btn.className = `flex flex-col items-center p-2 rounded-xl transition-all ${cls}`;
-                btn.innerHTML = `<span class="text-[10px] font-black">${label}</span><i data-lucide="${ico}" class="w-4 h-4 mt-1"></i>`;
+                btn.innerHTML = `<span class="text-[10px] font-black text-white">${label}</span><i data-lucide="${ico}" class="w-4 h-4 mt-1"></i>`;
                 grid.appendChild(btn);
             }
-            if (ruleBroken) document.getElementById('habit-section').classList.add('rule-broken');
-            else document.getElementById('habit-section').classList.remove('rule-broken');
+            if (ruleBroken) document.getElementById('habit-section')?.classList.add('rule-broken');
+            else document.getElementById('habit-section')?.classList.remove('rule-broken');
             if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
-
-        async function toggleHabit(key) {
-            appState.habits[key] = !appState.habits[key];
-            if (window.isLocalMode) saveLocalFallback();
-            else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'habits'), appState.habits);
-            renderHabits();
         }
 
         function renderSupps() {
             const list = document.getElementById('supp-list');
             if (!list) return;
-            list.innerHTML = appState.supps.map((s, idx) => `
-                <div onclick="toggleSupp(${idx})" class="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50 cursor-pointer hover:bg-slate-800 transition text-left">
-                    <div class="flex items-center gap-3">
-                        <i data-lucide="${s.checked ? 'check-circle' : 'circle'}" class="w-5 h-5 ${s.checked ? 'text-emerald-500' : 'text-slate-600'}"></i>
-                        <div><p class="text-xs font-bold ${s.checked ? 'line-through text-slate-500' : ''}">${s.name}</p><p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-left">${s.time}</p></div>
-                    </div>
-                </div>`).join('');
+            list.innerHTML = appState.supps.map((s, idx) => `<div onclick="toggleSupp(${idx})" class="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50 cursor-pointer hover:bg-slate-800 transition text-left"><div class="flex items-center gap-3 text-left"><i data-lucide="${s.checked ? 'check-circle' : 'circle'}" class="w-4 h-4 ${s.checked ? 'text-emerald-500' : 'text-slate-600'}"></i><div class="text-left"><p class="text-xs font-bold text-left ${s.checked ? 'line-through text-slate-500' : ''}">${s.name}</p><p class="text-[9px] text-slate-500 font-bold uppercase tracking-widest text-left">${s.time}</p></div></div></div>`).join('');
+            const manage = document.getElementById('supp-manage-list');
+            if (manage) manage.innerHTML = appState.supps.map((s, idx) => `<div class="flex justify-between p-2 bg-slate-900 rounded mb-1 text-left"><span class="text-xs font-bold text-slate-100">${s.name}</span><button onclick="deleteSupp(${idx})" class="text-red-500"><i data-lucide="trash-2" class="w-4 h-4 text-red-500"></i></button></div>`).join('');
             if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
-
-        async function toggleSupp(idx) {
-            appState.supps[idx].checked = !appState.supps[idx].checked;
-            if (window.isLocalMode) saveLocalFallback();
-            else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
-            renderSupps();
         }
 
         function renderMeals() {
@@ -461,104 +391,95 @@
             if (!grid) return;
             grid.innerHTML = ['breakfast', 'lunch', 'dinner'].map(cat => {
                 const meal = appState.selectedMeals[cat];
-                return `
-                <div class="bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 flex flex-col text-left">
-                    <div class="flex justify-between items-start mb-2">
-                        <h4 class="text-[10px] font-black uppercase text-blue-400 beast-font">${cat}</h4>
-                        <span class="text-[9px] font-bold text-slate-500">${meal.macros}</span>
-                    </div>
-                    <p class="text-xs font-bold mb-1 uppercase tracking-tighter h-8 line-clamp-2">${meal.name}</p>
-                    <div class="mt-4 flex gap-2">
-                        <button onclick="generateRecipe('${cat}')" class="flex-1 text-[10px] bg-blue-600/10 text-blue-400 py-2 rounded-lg font-black uppercase border border-blue-500/20 hover:bg-blue-600/20 transition">Draft ✨</button>
-                        <button onclick="openMealSelector('${cat}')" class="p-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>
-                    </div>
-                </div>`;
+                return `<div class="bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 flex flex-col text-left"><div class="flex justify-between items-start mb-2"><h4 class="text-[10px] font-black uppercase text-blue-400 beast-font text-left">${cat}</h4><span class="text-[9px] font-bold text-slate-500">${meal.macros}</span></div><p class="text-xs font-bold mb-1 uppercase tracking-tighter h-8 line-clamp-2 text-left">${meal.name}</p><div class="mt-4 flex gap-2"><button onclick="generateRecipe('${cat}')" class="flex-1 text-[10px] bg-blue-600/10 text-blue-400 py-2 rounded-lg font-black uppercase border border-blue-500/20 hover:bg-blue-600/20 transition">Draft ✨</button><button onclick="openMealSelector('${cat}')" class="p-2 bg-slate-700 rounded-lg hover:bg-slate-600 transition"><i data-lucide="refresh-cw" class="w-3 h-3 text-slate-100"></i></button></div></div>`;
             }).join('');
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
-        function openMealSelector(category) {
-            const options = MEAL_LIBRARY[category];
-            let html = `<div class="grid grid-cols-1 gap-3 pb-20 text-left">`;
-            options.forEach((meal, idx) => {
-                html += `
-                    <div onclick="selectMeal('${category}', ${idx})" class="p-4 bg-slate-800 rounded-xl border border-slate-700 hover:border-blue-500 cursor-pointer transition">
-                        <div class="flex justify-between items-start text-left">
-                            <p class="text-sm font-bold text-slate-100 text-left">${meal.name}</p>
-                            <span class="text-[10px] text-blue-400 font-black">${meal.macros}</span>
-                        </div>
-                        <p class="text-[10px] text-slate-400 mt-1 text-left">${meal.blueprint}</p>
-                    </div>`;
-            });
-            showModal(`Choose ${category.toUpperCase()}`, html + `</div>`);
-        }
-
-        async function selectMeal(category, index) {
-            appState.selectedMeals[category] = MEAL_LIBRARY[category][index];
-            if (window.isLocalMode) saveLocalFallback();
-            else await updateProfile({ selectedMeals: appState.selectedMeals });
-            renderMeals(); closeModal();
-        }
-
-        function renderToday() {
-            const container = document.getElementById('today-tasks');
-            const badge = document.getElementById('day-type-badge');
-            if (!container || !badge) return;
+        function updateStatsUI() {
+            if(document.getElementById('alcohol-count')) document.getElementById('alcohol-count').innerText = `${appState.drinks}/3`;
+            if(document.getElementById('water-count')) document.getElementById('water-count').innerText = `${appState.water.toFixed(1)}L`;
+            if(document.getElementById('protein-total')) document.getElementById('protein-total').innerText = `${appState.protein}g / 200g`;
             const now = new Date();
-            const dateKey = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
-            const plannedType = appState.planner[dateKey];
-            let displayType = "", tasks = [];
-            if (plannedType) {
-                displayType = plannedType;
-                const defaultMatch = BEAST_SCHEDULE.find(s => s.type.toLowerCase().includes(plannedType.toLowerCase()) || plannedType.toLowerCase().includes(s.type.split(' ')[0].toLowerCase()));
-                tasks = defaultMatch ? defaultMatch.tasks : [`Target: ${plannedType}`];
-            } else {
-                const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
-                const plan = BEAST_SCHEDULE.find(s => s.day === dayName);
-                if (plan) { displayType = plan.type; tasks = plan.tasks; }
-            }
-            badge.innerText = displayType;
-            container.innerHTML = tasks.map(t => `<div class="bg-slate-800/50 p-2 rounded-lg border border-slate-700/50 flex gap-2 text-slate-100 text-left"><div class="w-1 h-1 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div><span class="text-[11px] font-bold uppercase tracking-tighter text-left">${t}</span></div>`).join('');
+            if(document.getElementById('date-display')) document.getElementById('date-display').innerText = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', weekday: 'long' });
+            renderToday();
+        }
+
+        function renderAll() {
+            updateStatsUI(); renderHabits(); renderSupps(); renderLatestMetrics(); renderMeals(); renderToday();
+        }
+
+        // --- ACTIONS ---
+        async function syncData() {
+            const { onSnapshot, collection, doc } = window.firestoreUtils, user = window.currentUser;
+            if (!user) return;
+            document.getElementById('sync-indicator')?.classList.remove('hidden');
+            document.getElementById('mode-status').innerText = "STORAGE: CLOUD SYNC ACTIVE";
+            document.getElementById('mode-status').classList.add('text-emerald-500');
+
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'settings', 'profile'), (ds) => {
+                if (ds.exists()) {
+                    const d = ds.data(); appState.drinks = d.drinks || 0; appState.water = d.water || 0;
+                    appState.protein = d.protein || 0; appState.apiKey = d.apiKey || '';
+                    if (d.selectedMeals) appState.selectedMeals = d.selectedMeals;
+                    updateStatsUI();
+                }
+            });
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'habits'), (ds) => { appState.habits = ds.exists() ? ds.data() : {}; renderHabits(); });
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'supps'), (ds) => { appState.supps = ds.exists() ? ds.data().list || DEFAULT_SUPPS : DEFAULT_SUPPS; renderSupps(); });
+            onSnapshot(doc(window.db, 'artifacts', window.appId, 'users', user.uid, 'data', 'planner'), (ds) => { appState.planner = ds.exists() ? ds.data() : {}; renderToday(); });
+            onSnapshot(collection(window.db, 'artifacts', window.appId, 'users', user.uid, 'metrics'), (snap) => {
+                appState.metrics = snap.docs.map(d => ({id: d.id, ...d.data()})).sort((a,b) => b.timestamp - a.timestamp);
+                renderLatestMetrics();
+            });
+            setTimeout(() => document.getElementById('sync-indicator')?.classList.add('hidden'), 1000);
+        }
+
+        function saveLocalFallback() {
+            localStorage.setItem('beast_local_habits', JSON.stringify(appState.habits));
+            localStorage.setItem('beast_local_supps', JSON.stringify(appState.supps));
+            localStorage.setItem('beast_local_drinks', appState.drinks);
+            localStorage.setItem('beast_local_water', appState.water);
+            localStorage.setItem('beast_local_protein', appState.protein);
+            localStorage.setItem('beast_local_meals', JSON.stringify(appState.selectedMeals));
+            localStorage.setItem('beast_local_planner', JSON.stringify(appState.planner));
+            updateStatsUI();
         }
 
         async function updateProfile(update) {
-            const { doc, setDoc } = window.firestoreUtils;
-            await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'settings', 'profile'), { ...appState, ...update }, { merge: true });
+            if (window.isLocalMode) saveLocalFallback(); else {
+                const { doc, setDoc } = window.firestoreUtils;
+                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'settings', 'profile'), { ...appState, ...update }, { merge: true });
+            }
+        }
+
+        async function toggleHabit(key) {
+            appState.habits[key] = !appState.habits[key];
+            if (window.isLocalMode) saveLocalFallback(); else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'habits'), appState.habits);
+            renderHabits();
+        }
+
+        async function toggleSupp(idx) {
+            appState.supps[idx].checked = !appState.supps[idx].checked;
+            if (window.isLocalMode) saveLocalFallback(); else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'supps'), { list: appState.supps });
+            renderSupps();
         }
 
         async function savePlannerDate(dateKey, value) {
             appState.planner[dateKey] = value;
-            if (window.isLocalMode) saveLocalFallback();
-            else {
-                const { doc, setDoc } = window.firestoreUtils;
-                await setDoc(doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'planner'), appState.planner);
-            }
-            renderToday(); renderMonthlyPlanner();
+            if (window.isLocalMode) saveLocalFallback(); else await window.firestoreUtils.setDoc(window.firestoreUtils.doc(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'data', 'planner'), appState.planner);
+            renderToday(); if(!document.getElementById('content-modal').classList.contains('hidden')) showTab('planner');
         }
 
-        function renderMonthlyPlanner() {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            const daysInMonth = new Date(year, month + 1, 0).getDate();
-            const startDay = new Date(year, month, 1).getDay();
-            const monthName = now.toLocaleString('default', { month: 'long' });
-            let html = `<div class="mb-6 bg-slate-800/50 p-4 rounded-2xl border border-slate-700"><h3 class="text-lg font-black beast-font text-blue-400 text-left">${monthName} ${year}</h3></div><div class="grid grid-cols-7 gap-1 mb-6 text-center text-left">${['S','M','T','W','T','F','S'].map(d => `<span class="text-[10px] font-black text-slate-600">${d}</span>`).join('')}${Array(startDay).fill(0).map(() => `<div></div>`).join('')}${Array(daysInMonth).fill(0).map((_, i) => { const day = i + 1; const key = `${year}-${(month+1).toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}`; const isT = new Date().getDate() === day; const p = appState.planner[key]; return `<button onclick="openDayPlan('${key}')" class="p-2 rounded-lg text-xs font-bold border ${isT ? 'border-blue-400 bg-blue-400/10' : p ? 'border-emerald-500 bg-emerald-500/5 text-emerald-400' : 'border-slate-700 text-slate-500'}">${day}${p ? `<div class='w-1 h-1 bg-emerald-400 rounded-full mx-auto mt-1'></div>` : ''}</button>`; }).join('')}</div>`;
-            showModal("Monthly Planner", html);
+        async function addProtein() { appState.protein = Math.min(400, appState.protein + 25); await updateProfile({ protein: appState.protein }); updateStatsUI(); }
+        async function subProtein() { appState.protein = Math.max(0, appState.protein - 25); await updateProfile({ protein: appState.protein }); updateStatsUI(); }
+        async function setProteinManual() {
+            const v = parseInt(document.getElementById('m-protein')?.value);
+            if (!isNaN(v)) { appState.protein = v; await updateProfile({ protein: appState.protein }); updateStatsUI(); closeModal(); }
         }
 
-        async function openDayPlan(key) {
-            const current = appState.planner[key] || '';
-            const html = `<div class="space-y-6 text-left"><div class="bg-slate-900 p-4 rounded-xl border border-slate-700 text-left"><h4 class="text-xs uppercase font-black text-blue-400 mb-3 tracking-widest text-left">Set Workout: ${key}</h4><div class="grid grid-cols-2 gap-2 mb-4">${['Lower A', 'Upper A', 'Lower B', 'Upper B', 'Zone 2', 'VO2 Max', 'Rest'].map(t => `<button onclick="savePlannerDate('${key}', '${t}')" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-[10px] font-bold uppercase ${current === t ? 'bg-blue-600 border-blue-400' : ''}">${t}</button>`).join('')}</div><input type="text" id="p-custom" value="${current}" placeholder="Or custom name..." class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-sm text-white mb-2"><button onclick="savePlannerDate('${key}', document.getElementById('p-custom').value)" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs tracking-widest text-slate-100">Update Plan</button></div><button onclick="renderMonthlyPlanner()" class="text-xs text-slate-500 underline uppercase font-bold text-left">Back to Calendar</button></div>`;
-            showModal("Edit Day", html);
-        }
-
-        async function addAlcohol() { 
-            if (appState.drinks >= 3) { showModal("Warning", "Limit reached. Stay dry for 12% BF."); return; }
-            appState.drinks++; if (window.isLocalMode) saveLocalFallback(); else await updateProfile({ drinks: appState.drinks });
-        }
-        async function addWater() { appState.water = Math.min(8, appState.water + 0.5); if (window.isLocalMode) saveLocalFallback(); else await updateProfile({ water: appState.water }); }
-        async function addProtein() { appState.protein = Math.min(300, appState.protein + 25); if (window.isLocalMode) saveLocalFallback(); else await updateProfile({ protein: appState.protein }); }
+        async function addAlcohol() { if (appState.drinks >= 3) { showModal("Warning", "Stay dry for your 12% goal."); return; } appState.drinks++; await updateProfile({ drinks: appState.drinks }); updateStatsUI(); }
+        async function addWater() { appState.water = Math.min(8, appState.water + 0.5); await updateProfile({ water: appState.water }); updateStatsUI(); }
 
         async function addSupp() {
             const n = document.getElementById('new-supp-name').value, t = document.getElementById('new-supp-time').value;
@@ -575,72 +496,62 @@
 
         async function apiCall(prompt, system) {
             if (!appState.apiKey) { showModal("Key Required", "Add AI Key in Settings ✨."); return null; }
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${appState.apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${appState.apiKey}`;
             const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: system }] } };
-            try { const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); const d = await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text; } catch (e) { return null; }
+            const ctrl = new AbortController(); const tid = setTimeout(() => ctrl.abort(), 18000);
+            try {
+                const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ctrl.signal });
+                clearTimeout(tid); if (!r.ok) { const err = await r.json(); showModal("API Error", err.error?.message || "Unknown Error"); return null; }
+                const d = await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text;
+            } catch (e) { showModal("API Error", "Check connection and key."); return null; }
         }
 
         async function runPerformanceAudit() {
             showModal("Bio-Coach ✨", "<div class='animate-pulse text-blue-400 text-center py-20 font-black'>ANALYZING DATA...</div>");
-            const res = await apiCall("Audit metrics vs 12% BF goal. blunt feedback.", "Audit agent.");
-            if (res) showModal("Audit ✨", `<div class="text-left text-sm prose prose-invert">${res.replace(/\n/g, '<br>')}</div>`);
+            const res = await apiCall("Audit metrics vs 12% goal. Hard truths.", "Stoic Beast Auditor.");
+            if (res) showModal("Audit ✨", `<div class="text-left text-sm prose prose-invert leading-relaxed">${res.replace(/\n/g, '<br>')}</div>`);
         }
 
         async function generateRecipe(cat) {
             const m = appState.selectedMeals[cat];
-            showModal("Drafting ✨", "<div class='animate-pulse text-blue-400 text-center py-20 font-black'>AI GENERATING...</div>");
-            const res = await apiCall(`Recipe for ${m.name}: ${m.blueprint}`, "Bio-Chef.");
-            if (res) showModal(m.name, `<div class="recipe-container text-left">${res.replace(/\n/g, '<br>')}</div>`);
-        }
-
-        function generateDraftSelector() {
-            const h = `<div class="grid grid-cols-1 gap-4 text-left">${Object.keys(appState.selectedMeals).map(c => `<button onclick="generateRecipe('${c}')" class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left hover:border-blue-500 transition"><p class="text-[10px] uppercase text-slate-500 font-black text-left">${c}</p><p class="font-bold text-slate-100 text-left">${appState.selectedMeals[c].name}</p></button>`).join('')}</div>`;
-            showModal("Select Meal", h);
+            showModal("Drafting ✨", "<div class='animate-pulse text-blue-400 text-center py-20 font-black text-left'>AI GENERATING...</div>");
+            const res = await apiCall(`Recipe for ${m.name}: ${m.blueprint}`, "Bio-Chef for fathers.");
+            if (res) showModal(m.name, `<div class="recipe-container text-left text-slate-100">${res.replace(/\n/g, '<br>')}</div>`);
         }
 
         async function getMotivation() {
             showModal("Focusing...", "<div class='animate-pulse text-yellow-400 text-center py-20 font-black'>ENGAGING MINDSET...</div>");
-            const res = await apiCall("I want to skip. Legacy motivator.", "Stoic Coach.");
-            if (res) showModal("Focus ✨", `<div class="p-8 bg-slate-800 rounded-3xl italic text-left border-l-4 border-yellow-500">"${res}"</div>`);
+            const res = await apiCall("I want to skip. Legacy motivator for a dad.", "Stoic Beast Coach.");
+            if (res) showModal("Focus ✨", `<div class="p-8 bg-slate-800 rounded-3xl italic text-left border-l-4 border-yellow-500 text-lg">${res}</div>`);
+        }
+
+        function generateDraftSelector() {
+            const h = `<div class="grid grid-cols-1 gap-4 text-left">${['breakfast','lunch','dinner'].map(c => `<button onclick="generateRecipe('${c}')" class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left hover:border-blue-500 transition text-left"><p class="text-[10px] uppercase text-slate-500 font-black text-left">${c}</p><p class="font-bold text-slate-100 text-left text-left text-left">${appState.selectedMeals[c].name}</p></button>`).join('')}</div>`;
+            showModal("Select Category", h);
         }
 
         async function logMetrics() {
             const w = parseFloat(document.getElementById('m-weight').value), wa = parseFloat(document.getElementById('m-waist').value), n = parseFloat(document.getElementById('m-neck').value);
             if (!w || !wa || !n) return; const bf = (86.010 * Math.log10(wa - n) - 70.041 * Math.log10(75) + 36.76).toFixed(1);
-            if (window.isLocalMode) { appState.metrics.unshift({ weight: w, bf, dateLabel: new Date().toLocaleDateString(), timestamp: Date.now() }); saveLocalFallback(); }
+            if (window.isLocalMode) { appState.metrics.unshift({ weight: w, bf, dateLabel: new Date().toLocaleDateString(), timestamp: Date.now() }); saveLocalFallback(); renderLatestMetrics(); }
             else { await window.firestoreUtils.addDoc(window.firestoreUtils.collection(window.db, 'artifacts', window.appId, 'users', window.currentUser.uid, 'metrics'), { weight: w, bf, dateLabel: new Date().toLocaleDateString(), timestamp: Date.now() }); }
             closeModal();
         }
 
-        function renderLatestMetrics() {
-            if (appState.metrics.length > 0) {
-                const latest = appState.metrics[0];
-                document.getElementById('latest-weight').innerText = `${latest.weight} lbs`;
-                document.getElementById('latest-bf').innerText = `${latest.bf} %`;
-                const progress = Math.max(0, Math.min(100, ((25 - latest.bf) / (25 - 12)) * 100));
-                document.getElementById('bf-progress-bar').style.width = `${progress}%`;
-            }
-        }
-
-        function updateStatsUI() {
-            document.getElementById('alcohol-count').innerText = `${appState.drinks}/3`;
-            document.getElementById('water-count').innerText = `${appState.water.toFixed(1)}L`;
-            document.getElementById('protein-total').innerText = `${appState.protein}g`;
-            document.getElementById('api-key-input').value = appState.apiKey || '';
-            const now = new Date();
-            document.getElementById('day-of-week-banner').innerText = now.toLocaleDateString('en-US', { weekday: 'long' });
-            document.getElementById('current-date-display').innerText = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            renderToday();
-        }
-
         function showTab(t) {
             if (t === 'progress') {
-                const h = `<div class="space-y-6 text-left"><div class="bg-slate-800 p-6 rounded-2xl border border-slate-700"><h4 class="text-xs font-black uppercase text-blue-400 mb-4 tracking-widest text-left">New Entry</h4><div class="grid grid-cols-3 gap-3 mb-4"><div><label class="text-[9px] uppercase text-slate-500 mb-1 block">Weight</label><input type="number" id="m-weight" placeholder="lbs" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full"></div><div><label class="text-[9px] uppercase text-slate-500 mb-1 block">Waist</label><input type="number" id="m-waist" placeholder="in" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full"></div><div><label class="text-[9px] uppercase text-slate-500 mb-1 block">Neck</label><input type="number" id="m-neck" placeholder="in" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full"></div></div><button onclick="logMetrics()" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs tracking-widest text-slate-100">Save Analytics</button></div><div class="space-y-2">${appState.metrics.map(m => `<div class="flex justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50"><div><p class="text-[10px] uppercase font-bold text-slate-400 text-left">${m.dateLabel}</p><p class="text-sm font-bold text-left">${m.weight} lbs</p></div><div class="text-right"><p class="text-[10px] uppercase font-bold text-slate-500 text-right">BF%</p><p class="text-sm text-blue-400 font-black">${m.bf}%</p></div></div>`).join('')}</div></div>`;
+                const h = `<div class="space-y-6 text-left"><div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 text-left"><h4 class="text-xs font-black uppercase text-blue-400 mb-4 tracking-widest text-left">Correction</h4><div class="grid grid-cols-1 gap-3 mb-6 text-left"><div class="flex items-end gap-2 text-left"><div class="flex-grow text-left"><label class="text-[9px] uppercase text-slate-500 mb-1 block text-left">Daily Protein (g)</label><input type="number" id="m-protein" value="${appState.protein}" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full text-left"></div><button onclick="setProteinManual()" class="bg-slate-700 p-3 rounded-lg hover:bg-slate-600 transition font-black text-xs uppercase text-slate-100">Set</button></div></div><h4 class="text-xs font-black uppercase text-blue-400 mb-4 tracking-widest text-left">New Log</h4><div class="grid grid-cols-3 gap-3 mb-4 text-left"><div><label class="text-[9px] uppercase text-slate-500 mb-1 block text-left text-left text-left">Weight</label><input type="number" id="m-weight" placeholder="lbs" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full text-left"></div><div><label class="text-[9px] uppercase text-slate-500 mb-1 block text-left text-left text-left">Waist</label><input type="number" id="m-waist" placeholder="in" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full text-left"></div><div><label class="text-[9px] uppercase text-slate-500 mb-1 block text-left text-left text-left">Neck</label><input type="number" id="m-neck" placeholder="in" class="bg-slate-900 border border-slate-700 p-3 rounded text-sm text-white w-full text-left"></div></div><button onclick="logMetrics()" class="w-full bg-blue-600 py-3 rounded-xl font-bold uppercase text-xs tracking-widest text-slate-100 shadow-lg">Save Stats</button></div><div class="space-y-2">${appState.metrics.map(m => `<div class="flex justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50 text-left"><div><p class="text-[10px] uppercase font-bold text-slate-400 text-left text-left">${m.dateLabel}</p><p class="text-sm font-bold text-left text-left">${m.weight} lbs</p></div><div class="text-right text-left text-left text-slate-100 text-left"><p class="text-[10px] uppercase font-bold text-slate-500 text-right text-left text-left text-left">BF%</p><p class="text-sm text-blue-400 font-black text-right text-left text-left text-left">${m.bf}%</p></div></div>`).join('')}</div></div>`;
                 showModal("Analytics", h);
-            } else if (t === 'shopping') renderShoppingList();
-            else if (t === 'workouts') showModal("Tall Cues", `<div class="space-y-4 text-left"><div class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">FLOOR PRESS</h4><p class="text-xs text-slate-300">Stop elbows at floor to protect long humerus shoulders.</p></div><div class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">HACK SQUAT</h4><p class="text-xs text-slate-300 text-left">Feet low. Upright torso. Forces knee flexion.</p></div></div>`);
-            else if (t === 'med') showModal("MED Routine", `<ul class="space-y-3 text-left"><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Goblet Squat</span><span class="font-black">3x15</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Pushups</span><span class="font-black text-blue-400">3xMAX</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>DB Row</span><span class="font-black">3x15</span></li></ul>`);
-            else if (t === 'planner') renderMonthlyPlanner();
+            } else if (t === 'shopping') {
+                showModal("Supply List", `<div class="p-20 text-center text-slate-500 uppercase font-black tracking-widest text-xs">Features expanding soon...</div>`);
+            } else if (t === 'workouts') showModal("Tall Cues", `<div class="space-y-4 text-left"><div class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">FLOOR PRESS</h4><p class="text-xs text-slate-300 text-left">Stop elbows at floor to protect shoulder joints while hitting overload.</p></div><div class="p-4 bg-slate-800 rounded-xl border border-slate-700 text-left"><h4 class="font-black text-blue-400 uppercase text-xs mb-1">HACK SQUAT</h4><p class="text-xs text-slate-300 text-left text-left">Feet low. Upright torso. Grow quads.</p></div></div>`);
+            else if (t === 'med') showModal("MED Routine", `<ul class="space-y-3 text-left"><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700"><span>Goblet Squat</span><span class="font-black text-blue-400 text-left text-left text-left">3x15</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700 text-left"><span>Pushups</span><span class="font-black text-blue-400 text-left text-left text-left">3xMAX</span></li><li class="flex justify-between p-3 bg-slate-800 rounded-xl border border-slate-700 text-left text-left"><span>DB Row</span><span class="font-black text-blue-400 text-left text-left text-left text-left">3x15</span></li></ul>`);
+            else if (t === 'planner') {
+                const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+                const days = new Date(y, m + 1, 0).getDate(), start = new Date(y, m, 1).getDay();
+                let h = `<div class="mb-6 bg-slate-800/50 p-4 rounded-2xl border border-slate-700 text-left text-left"><h3 class="text-lg font-black beast-font text-blue-400 text-left text-left">${now.toLocaleString('default', { month: 'long' })} ${y}</h3></div><div class="grid grid-cols-7 gap-1 mb-6 text-center text-left text-slate-100 text-left text-left text-left text-left">${['S','M','T','W','T','F','S'].map(d => `<span class="text-[10px] font-black text-slate-600">${d}</span>`).join('')}${Array(start).fill(0).map(() => `<div></div>`).join('')}${Array(days).fill(0).map((_, i) => { const day = i + 1, key = `${y}-${(m+1).toString().padStart(2,'0')}-${day.toString().padStart(2,'0')}`, isT = new Date().getDate() === day, p = appState.planner[key]; return `<button onclick="openDayPlan('${key}')" class="p-2 rounded-lg text-xs font-bold border ${isT ? 'border-blue-400 bg-blue-400/10' : p ? 'border-emerald-500 bg-emerald-500/5 text-emerald-400' : 'border-slate-700 text-slate-500'}">${day}${p ? `<div class='w-1 h-1 bg-emerald-400 rounded-full mx-auto mt-1'></div>` : ''}</button>`; }).join('')}</div>`;
+                showModal("Monthly Planner", h);
+            } else if (t === 'roadmap') showModal("4-Year Roadmap", `<div class="space-y-4 text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left"><div class="p-4 bg-blue-600/20 border border-blue-400 rounded-xl text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left text-left"><h4 class="text-xs font-black uppercase text-blue-400 mb-1 text-left text-left text-left text-left text-left text-left">Year 1: Foundation</h4><p class="text-[10px] text-slate-300 text-left text-left text-left text-left text-left text-left">Goal: 15% BF. Hardening tissue.</p></div></div>`);
         }
 
         async function saveSettings() {
@@ -649,14 +560,16 @@
             location.reload();
         }
 
-        function toggleSettings() { 
-            document.getElementById('settings-modal').classList.toggle('hidden');
-            if(!document.getElementById('settings-modal').classList.contains('hidden')) {
-                document.getElementById('api-key-input').value = appState.apiKey || '';
-                document.getElementById('firebase-config-input').value = localStorage.getItem('beast_custom_firebase_config') || '';
-            }
-        }
-        function toggleSuppModal() { document.getElementById('supp-modal').classList.toggle('hidden'); }
+        // --- STARTUP LOGIC ---
+        window.addEventListener('auth-ready', () => {
+            document.getElementById('app-container').classList.remove('opacity-0');
+            document.getElementById('app-container').style.opacity = '1';
+            if (!window.isLocalMode) syncData();
+            renderAll();
+        });
+
+        // Initialize display immediately
+        renderAll();
     </script>
 </body>
 </html>
